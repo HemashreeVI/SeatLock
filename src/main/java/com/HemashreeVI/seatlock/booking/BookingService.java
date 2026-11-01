@@ -14,7 +14,10 @@ import com.HemashreeVI.seatlock.event.EventRepository;
 import com.HemashreeVI.seatlock.messaging.Messages;
 import com.HemashreeVI.seatlock.messaging.Outbox;
 import com.HemashreeVI.seatlock.messaging.Topics;
+import com.HemashreeVI.seatlock.observability.BookingMetrics;
 import com.HemashreeVI.seatlock.seat.Seat;
+import com.HemashreeVI.seatlock.seat.SeatMapService;
+import com.HemashreeVI.seatlock.seat.SeatResponse;
 import com.HemashreeVI.seatlock.seat.SeatsChangedEvent;
 import com.HemashreeVI.seatlock.seat.SeatStatus;
 import lombok.extern.slf4j.Slf4j;
@@ -58,6 +61,8 @@ public class BookingService {
     private final SeatLockStrategy defaultStrategy;
     private final Outbox outbox;
     private final ApplicationEventPublisher events;
+    private final BookingMetrics metrics;
+    private final SeatMapService seatMapService;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingSeatRepository bookingSeatRepository,
@@ -67,7 +72,11 @@ public class BookingService {
                           List<SeatLockStrategy> strategyBeans,
                           PlatformTransactionManager transactionManager,
                           Outbox outbox,
-                          ApplicationEventPublisher events) {
+                          ApplicationEventPublisher events,
+                          BookingMetrics metrics,
+                          SeatMapService seatMapService) {
+        this.metrics = metrics;
+        this.seatMapService = seatMapService;
         this.outbox = outbox;
         this.events = events;
         this.bookingRepository = bookingRepository;
@@ -101,6 +110,21 @@ public class BookingService {
     }
 
     public HoldResult hold(String userId, HoldRequest request, String idempotencyKey, SeatLockStrategy strategy) {
+        try {
+            HoldResult result = metrics.timeHold(strategy.type(), () -> holdWithIdempotency(userId, request, idempotencyKey, strategy));
+            metrics.holdResult(strategy.type(), result.replayed() ? "replayed" : "success");
+            return result;
+        } catch (SeatUnavailableException e) {
+            metrics.holdResult(strategy.type(), "conflict");
+            throw e;
+        } catch (RuntimeException e) {
+            metrics.holdResult(strategy.type(), "rejected");
+            throw e;
+        }
+    }
+
+    private HoldResult holdWithIdempotency(String userId, HoldRequest request, String idempotencyKey,
+                                            SeatLockStrategy strategy) {
         List<Long> seatIds = validate(request);
 
         if (idempotencyKey != null) {
@@ -111,6 +135,9 @@ public class BookingService {
         }
 
         try {
+            if (properties.fastReject()) {
+                rejectIfAlreadyTaken(request.eventId(), seatIds);
+            }
             return new HoldResult(attemptHold(userId, request.eventId(), seatIds, idempotencyKey, strategy), false);
         } catch (SeatUnavailableException e) {
             if (idempotencyKey != null) {
@@ -122,6 +149,24 @@ public class BookingService {
                 }
             }
             throw e;
+        }
+    }
+
+    /**
+     * Fast path for the sell-out flood: once seats are gone, most requests are doomed. Checking
+     * the (Redis-cached) seat map first answers them with 409 without a DB transaction or lock.
+     * Safe because it can only REJECT: an "available" answer still goes through the locked
+     * database check below. Stale "taken" data is limited to the instant between a release's
+     * commit and the cache eviction that immediately follows it.
+     */
+    private void rejectIfAlreadyTaken(Long eventId, List<Long> seatIds) {
+        Set<Long> requested = Set.copyOf(seatIds);
+        List<Long> taken = seatMapService.seatMap(eventId).seats().stream()
+                .filter(s -> requested.contains(s.id()) && s.status() != SeatStatus.AVAILABLE)
+                .map(SeatResponse::id)
+                .toList();
+        if (!taken.isEmpty()) {
+            throw new SeatUnavailableException(taken, "Seat(s) already taken");
         }
     }
 
@@ -265,6 +310,7 @@ public class BookingService {
     /** Written to the outbox in the same transaction as the state change. */
     private void publish(Booking booking, String type, List<BookingSeat> items) {
         events.publishEvent(new SeatsChangedEvent(booking.getEvent().getId()));
+        metrics.transition(booking.getStatus().name());
         outbox.add("booking", booking.getId(), type, Topics.BOOKING_EVENTS, new Messages.BookingEvent(
                 type, booking.getId(), booking.getEvent().getId(), booking.getUserId(), booking.getStatus().name(),
                 booking.getTotalCents(), items.stream().map(i -> i.getSeat().getId()).toList(), Instant.now()));

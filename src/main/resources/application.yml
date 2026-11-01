@@ -11,6 +11,8 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/seatlock}
     username: ${DB_USER:seatlock}
     password: ${DB_PASSWORD:seatlock}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
   jpa:
     open-in-view: false
     hibernate:
@@ -20,15 +22,36 @@ spring:
       enabled: true
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    template:
+      observation-enabled: true       # carry the trace id into Kafka headers...
+    listener:
+      observation-enabled: true       # ...and continue the same trace in consumers
     producer:
       acks: all                       # wait until the broker has safely stored the message
     consumer:
       auto-offset-reset: earliest     # a new consumer group starts from the beginning
 
+  threads:
+    virtual:
+      enabled: true                   # Java 21 virtual threads: cheap blocking under high concurrency
+
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always
+  metrics:
+    tags:
+      application: seatlock
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: 1.0                # trace every request (lower this in production)
 
 seatlock:
   booking:
@@ -36,6 +59,7 @@ seatlock:
     max-seats-per-booking: 10
     expiry-sweep-interval-ms: 5000
     expiry-sweep-batch-size: 200
+    fast-reject: true                 # answer requests for already-taken seats from the cache
   locking:
     # OPTIMISTIC  -> @Version check, losers fail at commit
     # PESSIMISTIC -> SELECT ... FOR UPDATE, losers wait then fail

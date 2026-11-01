@@ -10,6 +10,8 @@ import java.time.Duration;
 public record BookingProperties(
         @DefaultValue("10m") Duration holdTtl,
         @DefaultValue("10") int maxSeatsPerBooking,
-        @DefaultValue("200") int expirySweepBatchSize
+        @DefaultValue("200") int expirySweepBatchSize,
+        /** Reject requests for seats the cached seat map already shows as taken (no DB work). */
+        @DefaultValue("true") boolean fastReject
 ) {
 }
