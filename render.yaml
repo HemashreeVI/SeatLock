@@ -1,0 +1,32 @@
+# Render Blueprint: free public demo of SeatLock.
+# Render reads this file when you choose "New > Blueprint" and connect the repository.
+# Step-by-step guide: DEPLOY.md
+services:
+  - type: web
+    name: seatlock
+    runtime: docker
+    plan: free
+    region: singapore            # closest Render region to India; pick the same region for Neon and Upstash
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    envVars:
+      # demo profile = no Kafka, small connection pool, settings for hosted Postgres/Redis
+      - key: SPRING_PROFILES_ACTIVE
+        value: demo
+      # --- Postgres (Neon): Render asks you for these when you create the Blueprint ---
+      - key: DB_URL            # jdbc:postgresql://<neon-host>/<database>?sslmode=require
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      # --- Redis (Upstash) ---
+      - key: REDIS_HOST        # e.g. xxxx.upstash.io (no "https://", no port)
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_PORT
+        value: "6379"
+      - key: REDIS_SSL
+        value: "true"

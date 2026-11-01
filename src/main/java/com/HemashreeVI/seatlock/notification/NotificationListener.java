@@ -1,7 +1,7 @@
 package com.HemashreeVI.seatlock.notification;
 
 import com.HemashreeVI.seatlock.messaging.Messages;
-import com.HemashreeVI.seatlock.messaging.OutboxRelay;
+import com.HemashreeVI.seatlock.messaging.MessageHandler;
 import com.HemashreeVI.seatlock.messaging.ProcessedMessages;
 import com.HemashreeVI.seatlock.messaging.Topics;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class NotificationListener {
+public class NotificationListener implements MessageHandler {
 
     private static final String CONSUMER = "notifications";
 
@@ -28,9 +28,15 @@ public class NotificationListener {
     private final ProcessedMessages processedMessages;
     private final JsonMapper json;
 
+    @Override
+    public String topic() {
+        return Topics.BOOKING_EVENTS;
+    }
+
+    @Override
     @KafkaListener(topics = Topics.BOOKING_EVENTS, groupId = "seatlock-notifications")
     @Transactional
-    public void onBookingEvent(@Payload String payload, @Header(OutboxRelay.HEADER_EVENT_ID) String eventId) {
+    public void handle(@Payload String payload, @Header(Topics.HEADER_EVENT_ID) String eventId) {
         if (!processedMessages.markProcessed(CONSUMER, eventId)) {
             log.info("Booking event {} already notified, skipping", eventId);
             return;

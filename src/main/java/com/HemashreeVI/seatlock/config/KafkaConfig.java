@@ -1,6 +1,8 @@
 package com.HemashreeVI.seatlock.config;
 
+import com.HemashreeVI.seatlock.messaging.MessagingMode;
 import com.HemashreeVI.seatlock.messaging.Topics;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,7 +14,9 @@ import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
 
+/** Kafka topics and error handling; not loaded in local (broker-less) messaging mode. */
 @Configuration
+@ConditionalOnProperty(name = MessagingMode.PROPERTY, havingValue = MessagingMode.KAFKA, matchIfMissing = true)
 public class KafkaConfig {
 
     /** Partitions per topic. Dead-letter topics MUST have the same count (see below). */

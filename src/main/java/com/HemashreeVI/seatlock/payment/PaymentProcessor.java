@@ -1,10 +1,13 @@
 package com.HemashreeVI.seatlock.payment;
 
+import com.HemashreeVI.seatlock.messaging.MessageHandler;
 import com.HemashreeVI.seatlock.messaging.Messages;
 import com.HemashreeVI.seatlock.messaging.Outbox;
 import com.HemashreeVI.seatlock.messaging.Topics;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.messaging.handler.annotation.Header;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -22,7 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Slf4j
 @Component
-public class PaymentProcessor {
+public class PaymentProcessor implements MessageHandler {
 
     private final PaymentRepository paymentRepository;
     private final PaymentGateway gateway;
@@ -39,8 +42,14 @@ public class PaymentProcessor {
         this.tx = new TransactionTemplate(transactionManager);
     }
 
+    @Override
+    public String topic() {
+        return Topics.PAYMENT_REQUESTED;
+    }
+
+    @Override
     @KafkaListener(topics = Topics.PAYMENT_REQUESTED, groupId = "seatlock-payments")
-    public void onPaymentRequested(String payload) {
+    public void handle(@Payload String payload, @Header(name = Topics.HEADER_EVENT_ID, required = false) String eventId) {
         Messages.PaymentRequested request = json.readValue(payload, Messages.PaymentRequested.class);
         process(request.paymentId());
     }

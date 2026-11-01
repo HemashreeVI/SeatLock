@@ -5,6 +5,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL:false}       # true for hosted Redis such as Upstash
       repositories:
         enabled: false
   datasource:
@@ -35,6 +38,9 @@ spring:
     virtual:
       enabled: true                   # Java 21 virtual threads: cheap blocking under high concurrency
 
+server:
+  port: ${PORT:8080}                  # hosting platforms (e.g. Render) tell the app which port to use
+
 management:
   endpoints:
     web:
@@ -54,6 +60,8 @@ management:
       probability: 1.0                # trace every request (lower this in production)
 
 seatlock:
+  messaging:
+    mode: kafka                       # kafka | local (in-process, no broker: see application-demo.yml)
   booking:
     hold-ttl: 10m                     # seats stay reserved this long before auto-release
     max-seats-per-booking: 10

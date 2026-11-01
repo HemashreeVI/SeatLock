@@ -7,7 +7,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
 ![Redis](https://img.shields.io/badge/Redis-7-red)
 ![Kafka](https://img.shields.io/badge/Kafka-4.1-black)
-![Tests](https://img.shields.io/badge/tests-37%20passing-success)
+![Tests](https://img.shields.io/badge/tests-41%20passing-success)
 
 ---
 
@@ -20,6 +20,17 @@ When a popular event goes on sale, thousands of users try to book the same limit
 3. **Duplicate payments:** a network retry or double-click charges the user twice.
 
 **SeatLock** is a backend system designed to handle exactly this scenario correctly, reliably, and at scale.
+
+---
+
+## 🌐 Live demo
+
+Open `/` on a running instance for an interactive demo: a seat map where you can hold, pay and cancel, see notifications and the live double-booking audit, and a **"50 buyers, 1 seat" race** button.
+
+- **Deploy your own free public demo** (Render + Neon + Upstash, no credit card): see [`DEPLOY.md`](./DEPLOY.md).
+- **Run it locally:** start the app (see *Getting Started*) and open http://localhost:8080/.
+
+<!-- Once deployed, replace this line with: **Live:** https://seatlock-xxxx.onrender.com (the free server sleeps when idle; the first visit takes ~2 min to wake it) -->
 
 ---
 
@@ -119,6 +130,17 @@ Prometheus + Grafana (dashboard at http://localhost:3000, anonymous view-only, l
 
 ```bash
 docker compose --profile observability up -d
+```
+
+### Without Kafka (demo mode)
+
+The `demo` profile runs without a message broker: the outbox delivers messages to the handlers inside the app. It's what the free public deployment uses, and it needs only Postgres and Redis:
+
+```bash
+docker compose up -d postgres redis
+```
+```bash
+SPRING_PROFILES_ACTIVE=demo ./mvnw spring-boot:run      # Windows PowerShell: $env:SPRING_PROFILES_ACTIVE="demo"; .\mvnw.cmd spring-boot:run
 ```
 
 ### Verify
