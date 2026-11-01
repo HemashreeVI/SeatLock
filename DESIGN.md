@@ -123,6 +123,9 @@ notification module ──► one notification per booking event
 - **Booking saga listener:** acts only if the booking is still `PAYMENT_PENDING`, under a row lock.
 - **Notification consumer:** an *inbox* table `processed_messages(consumer, message_id)`; the insert and the side effect share a transaction, so a duplicate is detected and skipped. Covered by `OutboxRelayTest.redeliveredBookingEventIsNotNotifiedTwice`.
 
+### Demo mode: the same outbox, no broker
+Free hosting has no affordable Kafka, so `seatlock.messaging.mode=local` (set by the `demo` profile) swaps the transport. A `LocalOutboxDispatcher` reads unpublished outbox rows in id order and calls the same `MessageHandler` beans the Kafka listeners use. It marks a row published only **after** its handler succeeded, so delivery is still at-least-once and survives restarts. Failures are retried with a growing delay and parked after 4 attempts (the local dead-letter); the payment reconciler covers stuck payments exactly as in Kafka mode. Business code is unaware of the difference. What you lose is broker-level scaling across instances: the demo runs a single instance.
+
 ### Ordering
 Messages are keyed by booking id, so all messages for a booking land on the same partition, in order.
 
