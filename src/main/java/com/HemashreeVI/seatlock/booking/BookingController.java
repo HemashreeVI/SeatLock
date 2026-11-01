@@ -2,6 +2,7 @@ package com.HemashreeVI.seatlock.booking;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
+import com.HemashreeVI.seatlock.queue.WaitingRoomService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,15 +22,19 @@ public class BookingController {
 
     public static final String USER_HEADER = "X-User-Id";
     public static final String IDEMPOTENCY_HEADER = "Idempotency-Key";
+    public static final String QUEUE_TOKEN_HEADER = "X-Queue-Token";
 
     private final BookingService bookingService;
+    private final WaitingRoomService waitingRoom;
 
     /** Hold seats for hold-ttl (10 minutes by default). */
     @PostMapping
     public ResponseEntity<BookingResponse> hold(
             @RequestHeader(USER_HEADER) @Size(min = 1, max = 100) String userId,
             @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) @Size(max = 100) String idempotencyKey,
+            @RequestHeader(value = QUEUE_TOKEN_HEADER, required = false) String queueToken,
             @Valid @RequestBody HoldRequest request) {
+        waitingRoom.assertAdmitted(request.eventId(), userId, queueToken);
         HoldResult result = bookingService.hold(userId, request, idempotencyKey);
         BookingResponse booking = result.booking();
         if (result.replayed()) {

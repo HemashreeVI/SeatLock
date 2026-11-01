@@ -11,7 +11,8 @@ public record CreateEventRequest(
         @NotBlank @Size(max = 200) String name,
         @NotBlank @Size(max = 200) String venue,
         @NotNull @Future Instant startsAt,
-        @NotEmpty @Size(max = 20) @Valid List<SectionRequest> sections
+        @NotEmpty @Size(max = 20) @Valid List<SectionRequest> sections,
+        Boolean queueEnabled
 ) {
     public record SectionRequest(
             @NotBlank @Size(max = 50) String name,

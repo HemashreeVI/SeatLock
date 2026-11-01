@@ -35,6 +35,7 @@ public class EventService {
         event.setName(request.name());
         event.setVenue(request.venue());
         event.setStartsAt(request.startsAt());
+        event.setQueueEnabled(Boolean.TRUE.equals(request.queueEnabled()));
         eventRepository.save(event);
 
         List<Seat> seats = new ArrayList<>();

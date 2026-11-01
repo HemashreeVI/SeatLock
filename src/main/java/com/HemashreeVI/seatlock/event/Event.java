@@ -30,6 +30,10 @@ public class Event {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** Hot event: users must pass the virtual waiting room before holding seats. */
+    @Column(nullable = false)
+    private boolean queueEnabled;
+
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();

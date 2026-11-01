@@ -36,6 +36,11 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Unprocessable request", ex.getMessage());
     }
 
+    @ExceptionHandler(com.HemashreeVI.seatlock.queue.QueueAdmissionRequiredException.class)
+    public ProblemDetail handleQueue(com.HemashreeVI.seatlock.queue.QueueAdmissionRequiredException ex) {
+        return problem(HttpStatus.FORBIDDEN, "Waiting room admission required", ex.getMessage());
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail handleConflict(DataIntegrityViolationException ex) {
         return problem(HttpStatus.CONFLICT, "Conflict",

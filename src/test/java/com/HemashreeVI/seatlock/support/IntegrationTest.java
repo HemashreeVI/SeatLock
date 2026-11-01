@@ -18,7 +18,11 @@ import java.util.List;
 import java.util.Map;
 
 /** Base class: boots the full app on a random port against Testcontainers. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "seatlock.rate-limit.capacity=50",
+        "seatlock.rate-limit.refill-per-second=5",
+        "seatlock.queue.auto-admit=false"      // tests drive admissions explicitly
+})
 @Import(TestcontainersConfiguration.class)
 public abstract class IntegrationTest {
 

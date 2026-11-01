@@ -15,8 +15,10 @@ import com.HemashreeVI.seatlock.messaging.Messages;
 import com.HemashreeVI.seatlock.messaging.Outbox;
 import com.HemashreeVI.seatlock.messaging.Topics;
 import com.HemashreeVI.seatlock.seat.Seat;
+import com.HemashreeVI.seatlock.seat.SeatsChangedEvent;
 import com.HemashreeVI.seatlock.seat.SeatStatus;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -55,6 +57,7 @@ public class BookingService {
     private final Map<LockingStrategyType, SeatLockStrategy> strategies = new EnumMap<>(LockingStrategyType.class);
     private final SeatLockStrategy defaultStrategy;
     private final Outbox outbox;
+    private final ApplicationEventPublisher events;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingSeatRepository bookingSeatRepository,
@@ -63,8 +66,10 @@ public class BookingService {
                           LockingProperties lockingProperties,
                           List<SeatLockStrategy> strategyBeans,
                           PlatformTransactionManager transactionManager,
-                          Outbox outbox) {
+                          Outbox outbox,
+                          ApplicationEventPublisher events) {
         this.outbox = outbox;
+        this.events = events;
         this.bookingRepository = bookingRepository;
         this.bookingSeatRepository = bookingSeatRepository;
         this.eventRepository = eventRepository;
@@ -183,6 +188,7 @@ public class BookingService {
         }
         // flush now so version conflicts / unique violations surface here, not at some later point
         bookingRepository.flush();
+        events.publishEvent(new SeatsChangedEvent(eventId));
         return BookingResponse.of(booking, seats);
     }
 
@@ -258,6 +264,7 @@ public class BookingService {
 
     /** Written to the outbox in the same transaction as the state change. */
     private void publish(Booking booking, String type, List<BookingSeat> items) {
+        events.publishEvent(new SeatsChangedEvent(booking.getEvent().getId()));
         outbox.add("booking", booking.getId(), type, Topics.BOOKING_EVENTS, new Messages.BookingEvent(
                 type, booking.getId(), booking.getEvent().getId(), booking.getUserId(), booking.getStatus().name(),
                 booking.getTotalCents(), items.stream().map(i -> i.getSeat().getId()).toList(), Instant.now()));
