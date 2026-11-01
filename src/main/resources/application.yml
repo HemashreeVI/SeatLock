@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: seatlock
+  datasource:
+    url: jdbc:postgresql://localhost:5432/seatlock
+    username: seatlock
+    password: seatlock
+  jpa:
+    open-in-view: false
+
+management:
+  endpoint:
+    health:
+      show-details: always
