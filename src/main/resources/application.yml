@@ -3,16 +3,21 @@ spring:
     name: seatlock
   data:
     redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
       repositories:
         enabled: false
   datasource:
-    url: jdbc:postgresql://localhost:5432/seatlock
-    username: seatlock
-    password: seatlock
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/seatlock}
+    username: ${DB_USER:seatlock}
+    password: ${DB_PASSWORD:seatlock}
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+  mvc:
+    problemdetails:
+      enabled: true
 
 management:
   endpoint:
