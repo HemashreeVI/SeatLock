@@ -21,6 +21,8 @@ import java.util.Map;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "seatlock.rate-limit.capacity=50",
         "seatlock.rate-limit.refill-per-second=5",
+        "seatlock.rate-limit.ip-capacity=1000000",   // every test request comes from 127.0.0.1
+        "seatlock.rate-limit.ip-refill-per-second=100000",
         "seatlock.queue.auto-admit=false"      // tests drive admissions explicitly
 })
 @Import(TestcontainersConfiguration.class)

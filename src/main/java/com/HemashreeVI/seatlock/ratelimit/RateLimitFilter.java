@@ -11,22 +11,35 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UrlPathHelper;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.util.regex.Pattern;
 
 /**
- * Rate-limits the expensive write endpoints (holding seats, paying, joining the queue) per user.
+ * Rate-limits the expensive write endpoints (holding seats, paying, joining the queue).
+ * Two buckets must both have a token: one per user (X-User-Id) and one per client IP, because
+ * X-User-Id is not authenticated and could otherwise be rotated to dodge the limit.
  * Reads are not limited here (they are cheap and cached).
  * If Redis is unavailable we fail OPEN: better to serve users than to block everyone.
+ * <p>
+ * Behind a reverse proxy, set server.forward-headers-strategy so getRemoteAddr() is the client.
  */
 @Slf4j
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Pattern LIMITED_PATHS =
-            Pattern.compile("^/api/bookings(/\\d+/payments)?$|^/api/events/\\d+/queue$");
+            Pattern.compile("^/api/bookings(/\\d+/payments)?/?$|^/api/events/\\d+/queue/?$");
+
+    /** Same normalisation Spring MVC applies before routing: decode, strip ";params", collapse "//". */
+    private static final UrlPathHelper PATHS = new UrlPathHelper();
+
+    static {
+        PATHS.setRemoveSemicolonContent(true);
+        PATHS.setUrlDecode(true);
+    }
 
     private final RateLimiter rateLimiter;
     private final RateLimitProperties properties;
@@ -41,19 +54,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         return !properties.enabled()
-                || !"POST".equals(request.getMethod())
-                || !LIMITED_PATHS.matcher(request.getRequestURI()).matches();
+                || !"POST".equalsIgnoreCase(request.getMethod())
+                || !LIMITED_PATHS.matcher(PATHS.getPathWithinApplication(request)).matches();
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String user = request.getHeader("X-User-Id");
-        String clientKey = (user != null && !user.isBlank()) ? "user:" + user : "ip:" + request.getRemoteAddr();
-
         RateLimiter.Decision decision;
         try {
-            decision = rateLimiter.tryAcquire(clientKey, properties.capacity(), properties.refillPerSecond());
+            decision = rateLimiter.tryAcquire("ip:" + request.getRemoteAddr(),
+                    properties.ipCapacity(), properties.ipRefillPerSecond());
+            String user = request.getHeader("X-User-Id");
+            if (decision.allowed() && user != null && !user.isBlank()) {
+                decision = rateLimiter.tryAcquire("user:" + user, properties.capacity(), properties.refillPerSecond());
+            }
         } catch (RuntimeException e) {
             log.warn("Rate limiter unavailable, allowing request: {}", e.getMessage());
             chain.doFilter(request, response);
