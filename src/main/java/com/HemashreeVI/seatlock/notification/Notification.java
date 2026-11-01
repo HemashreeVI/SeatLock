@@ -30,6 +30,13 @@ public class Notification {
     @Column(nullable = false)
     private String message;
 
+    /** Where the email copy went (null when the customer gave no address). */
+    private String emailTo;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private EmailStatus emailStatus = EmailStatus.NONE;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 

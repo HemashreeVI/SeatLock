@@ -81,6 +81,13 @@
   ul.notes li { font-size: 13px; padding: 6px 0; border-top: 1px solid var(--border); }
   ul.notes li:first-child { border-top: 0; }
   .race-result { font-size: 14px; margin-top: 8px; }
+  .contact { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .contact input { width: 100%; }
+  @media (max-width: 480px) { .contact { grid-template-columns: 1fr; } }
+  .live { font-size: 12px; color: var(--muted); }
+  .live::before { content: "●"; margin-right: 4px; color: var(--muted); }
+  .live.on { color: var(--ok); } .live.on::before { color: var(--ok); }
+  .email-note { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
   code { font-size: 13px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
 </style>
 </head>
@@ -108,13 +115,20 @@
         <input id="user" size="14" aria-label="Your user id">
       </div>
     </div>
-    <div class="stats" id="stats" aria-live="polite"></div>
+    <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+      <div class="stats" id="stats" aria-live="polite" style="margin-bottom: 0;"></div>
+      <span class="live" id="live" title="Seat changes are pushed to this page instantly">connecting…</span>
+    </div>
     <div id="seatmap" aria-label="Seat map"><p class="muted">Loading seats… (a sleeping free server takes about a minute to wake up)</p></div>
     <div class="legend">
       <span class="lg-free">Available</span><span class="lg-sel">Selected</span><span class="lg-mine">Your hold</span>
       <span class="lg-held">Held by someone</span><span class="lg-booked">Booked</span>
     </div>
-    <div class="row" style="margin-top: 14px;">
+    <div class="contact">
+      <input id="cname" maxlength="100" autocomplete="name" placeholder="Your name (optional)" aria-label="Your name">
+      <input id="cemail" type="email" maxlength="254" autocomplete="email" placeholder="Email for confirmations (optional)" aria-label="Email for booking confirmations">
+    </div>
+    <div class="row" style="margin-top: 10px;">
       <button class="primary" id="hold" disabled>Hold selected seats</button>
       <button id="clear" disabled>Clear selection</button>
       <span class="muted" id="selection"></span>
@@ -125,7 +139,7 @@
   <aside class="stack">
     <section class="panel">
       <h2>Race: 50 buyers, 1 seat</h2>
-      <p class="muted" style="margin-top: 0;">Sends 50 hold requests for the same seat from 50 different users, all at once. Exactly one should win; the rest get <code>409 Conflict</code>.</p>
+      <p class="muted" style="margin-top: 0;">Open this page in two windows to watch seats change colour live. This sends 50 hold requests for the same seat from 50 different users, all at once. Exactly one should win; the rest get <code>409 Conflict</code>.</p>
       <button id="race">Start the race</button>
       <div class="race-result" id="race-result" aria-live="polite"></div>
     </section>
@@ -159,6 +173,10 @@
   const bookingCache = new Map();
 
   $('user').value = user;
+  $('cname').value = store.get('seatlock.name', '');
+  $('cemail').value = store.get('seatlock.email', '');
+  $('cname').addEventListener('change', () => store.set('seatlock.name', $('cname').value.trim()));
+  $('cemail').addEventListener('change', () => store.set('seatlock.email', $('cemail').value.trim()));
   $('user').addEventListener('change', () => {
     user = $('user').value.trim() || user;
     $('user').value = user;
@@ -207,9 +225,11 @@
     if (preferred) { select.value = preferred.id; eventId = preferred.id; }
   }
 
-  $('event').addEventListener('change', () => {
+  $('event').addEventListener('change', async () => {
     eventId = Number($('event').value);
     selected.clear();
+    await loadSeats();
+    connectLive();
     refreshAll();
   });
 
@@ -280,6 +300,46 @@
     $('clear').disabled = selected.size === 0;
   }
 
+  function renderCounts() {
+    const counts = { AVAILABLE: 0, HELD: 0, BOOKED: 0 };
+    seats.forEach((s) => { counts[s.status] = (counts[s.status] || 0) + 1; });
+    const pills = $('stats').querySelectorAll('.pill');
+    if (pills.length >= 3) {
+      pills[0].textContent = `${counts.AVAILABLE} available`;
+      pills[1].textContent = `${counts.HELD} held`;
+      pills[2].textContent = `${counts.BOOKED} booked`;
+    }
+  }
+
+  // ---- live updates (Server-Sent Events): the server pushes seat changes as they happen
+  let stream = null;
+  function connectLive() {
+    if (stream) stream.close();
+    if (!eventId || !window.EventSource) return;
+    const live = $('live');
+    stream = new EventSource(`/api/events/${eventId}/seats/stream`);
+    stream.addEventListener('open', () => { live.textContent = 'Live'; live.className = 'live on'; });
+    stream.addEventListener('error', () => { live.textContent = 'reconnecting…'; live.className = 'live'; });
+    stream.addEventListener('seats', (e) => {
+      const statuses = new Map(JSON.parse(e.data).map((s) => [s.id, s.status]));
+      let changed = false;
+      for (const s of seats) {
+        const next = statuses.get(s.id);
+        if (next && next !== s.status) { s.status = next; changed = true; }
+      }
+      if (changed) {
+        for (const id of [...selected]) {
+          if (statuses.get(id) && statuses.get(id) !== 'AVAILABLE') {
+            selected.delete(id);
+            say('A seat you selected was just taken by someone else.', 'error');
+          }
+        }
+        renderSeats();
+        renderCounts();
+      }
+    });
+  }
+
   async function loadStats() {
     if (!eventId) return;
     const res = await api('GET', `/api/events/${eventId}/stats`);
@@ -301,10 +361,16 @@
     const seatIds = [...selected];
     $('hold').disabled = true;
     say('Holding…');
-    const res = await api('POST', '/api/bookings', { eventId, seatIds },
+    const email = $('cemail').value.trim();
+    if (email && !$('cemail').checkValidity()) { say('That email address doesn\'t look right.', 'error'); $('hold').disabled = false; return; }
+    const body = { eventId, seatIds };
+    if ($('cname').value.trim()) body.name = $('cname').value.trim();
+    if (email) body.email = email;
+    const res = await api('POST', '/api/bookings', body,
                           { extra: { 'Idempotency-Key': crypto.randomUUID() } });
     if (res.status === 201 || res.status === 200) {
-      say(`Held ${seatIds.length} seat(s) for 10 minutes. Pay below to confirm.`, 'ok');
+      say(`Held ${seatIds.length} seat(s) for 10 minutes. Pay below to confirm.` +
+          (email ? ` Confirmation will be emailed to ${email}.` : ''), 'ok');
       myBookings.push({ id: res.data.id, eventId });
       store.set('seatlock.bookings', myBookings);
       bookingCache.set(res.data.id, res.data);
@@ -395,6 +461,14 @@
     for (const n of res.data.slice(0, 8)) {
       const li = document.createElement('li');
       li.textContent = n.message;
+      if (n.emailTo) {
+        const note = document.createElement('span');
+        note.className = 'email-note';
+        note.textContent = { SENT: `📧 emailed to ${n.emailTo}`, PENDING: `📧 sending to ${n.emailTo}…`,
+                             LOGGED: `email to ${n.emailTo} not sent (no email provider configured on this server)`,
+                             FAILED: `email to ${n.emailTo} failed`, SKIPPED: `email to ${n.emailTo} skipped (daily limit)` }[n.emailStatus] || '';
+        li.append(note);
+      }
       ul.append(li);
     }
   }
@@ -427,7 +501,8 @@
     refreshing = true;
     try {
       await loadBookings();
-      await Promise.all([loadSeats(), loadStats(), loadNotifications()]);
+      const streamUp = stream && stream.readyState === EventSource.OPEN;
+      await Promise.all([streamUp ? Promise.resolve() : loadSeats(), loadStats(), loadNotifications()]);
     } catch (e) {
       say('The server is not reachable right now (a free server may still be waking up). Retrying…', 'error');
     } finally {
@@ -441,8 +516,10 @@
       if (eventId === null) await new Promise((r) => setTimeout(r, 5000));
     }
     say('');
+    await loadSeats();
+    connectLive();
     await refreshAll();
-    setInterval(refreshAll, 4000);
+    setInterval(refreshAll, 5000);
   })();
 })();
 </script>

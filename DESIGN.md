@@ -151,6 +151,17 @@ Holding row locks while waiting on a slow external provider would stall everythi
 
 ---
 
+### Live seat map (Server-Sent Events)
+- `GET /api/events/{id}/seats/stream` keeps an HTTP response open and pushes `seats` events.
+- A committed seat change only marks its event *dirty* (`@TransactionalEventListener(AFTER_COMMIT)`). A flush every 300 ms sends each dirty event's statuses once. A rush of 1,000 holds therefore costs a few small queries, not 1,000 × viewers messages.
+- **Why SSE rather than WebSockets:** the traffic is one-way (server → browser). SSE is plain HTTP, reconnects automatically in the browser, and passes through hosting proxies without extra setup. A heartbeat every 20 s keeps idle connections open.
+- **Limits:** a cap on open streams (503 beyond it; the page falls back to periodic refresh), and subscribers live in one instance's memory. Several instances would need to fan changes out to each other, for example with Redis pub/sub.
+
+### Email notifications
+- The notification consumer stores the in-app notification and, inside the same transaction, asks for an email. The email is sent only **after commit**, so a rolled-back or redelivered message never emails for a notification that doesn't exist.
+- The delivery result (`SENT`, `FAILED`, `LOGGED` when no provider is configured, `SKIPPED`) is recorded on the notification. A provider outage never undoes the booking or the in-app notification.
+- **Anti-abuse on the public demo:** at most 10 emails per address per 24 h (plus Brevo's own 300/day).
+
 ## 9. Rate limiting
 
 - A token bucket per user (`capacity` burst, `refill-per-second` sustained), applied to holds, payments and queue joins.
@@ -203,5 +214,6 @@ For events created with `queueEnabled: true`:
 | A provider that charged but stayed unreachable past `give-up-after`, or a late success after cancellation, is only logged | Requires a 15-minute provider outage | Emit `RefundRequired` and automate refunds |
 | Seat map cached as one JSON blob | Fine for venues up to tens of thousands of seats | Per-section keys or a Redis hash per event |
 | Redis lock keys and queue Lua build keys dynamically | Single Redis node | Hash tags (`{eventId}`) for Redis Cluster |
+| Live-update subscribers are held in one instance's memory | The demo runs one instance | Redis pub/sub fan-out between instances |
 | Load test ran on one machine, from one IP, with rate limiting off | Shows correctness and relative cost of strategies | Multi-instance run behind a load balancer, distributed k6 |
 | Kafka in docker-compose has no authentication | Dev setup; ports are bound to `127.0.0.1` | SASL/TLS and ACLs so only the payment module can publish payment results |

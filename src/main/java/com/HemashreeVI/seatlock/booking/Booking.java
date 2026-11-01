@@ -39,6 +39,11 @@ public class Booking {
 
     private String idempotencyKey;
 
+    /** Optional contact details for notification emails. */
+    private String customerName;
+
+    private String customerEmail;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 

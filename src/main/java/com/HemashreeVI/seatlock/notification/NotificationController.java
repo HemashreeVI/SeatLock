@@ -15,14 +15,15 @@ public class NotificationController {
 
     private final NotificationRepository repository;
 
-    public record NotificationResponse(Long id, Long bookingId, String type, String message, Instant createdAt) {
+    public record NotificationResponse(Long id, Long bookingId, String type, String message, Instant createdAt,
+                                       String emailTo, EmailStatus emailStatus) {
     }
 
     @GetMapping("/api/notifications")
     public List<NotificationResponse> mine(@RequestHeader(BookingController.USER_HEADER) String userId) {
         return repository.findTop50ByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(n -> new NotificationResponse(n.getId(), n.getBookingId(), n.getType(), n.getMessage(),
-                        n.getCreatedAt()))
+                        n.getCreatedAt(), n.getEmailTo(), n.getEmailStatus()))
                 .toList();
     }
 }

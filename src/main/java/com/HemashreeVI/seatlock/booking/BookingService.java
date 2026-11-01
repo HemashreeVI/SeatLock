@@ -138,7 +138,7 @@ public class BookingService {
             if (properties.fastReject()) {
                 rejectIfAlreadyTaken(request.eventId(), seatIds);
             }
-            return new HoldResult(attemptHold(userId, request.eventId(), seatIds, idempotencyKey, strategy), false);
+            return new HoldResult(attemptHold(userId, request, seatIds, idempotencyKey, strategy), false);
         } catch (SeatUnavailableException e) {
             if (idempotencyKey != null) {
                 // the "competitor" may be a concurrent copy of this very request (double click,
@@ -170,11 +170,11 @@ public class BookingService {
         }
     }
 
-    private BookingResponse attemptHold(String userId, Long eventId, List<Long> seatIds, String idempotencyKey,
+    private BookingResponse attemptHold(String userId, HoldRequest request, List<Long> seatIds, String idempotencyKey,
                                         SeatLockStrategy strategy) {
         try {
             return strategy.withSeatsLocked(seatIds,
-                    () -> tx.execute(status -> doHold(userId, eventId, seatIds, idempotencyKey, strategy)));
+                    () -> tx.execute(status -> doHold(userId, request, seatIds, idempotencyKey, strategy)));
         } catch (ConcurrencyFailureException e) {
             // optimistic version conflict, lock timeout or deadlock: someone else got there first
             throw new SeatUnavailableException(seatIds, "Seat was taken by a concurrent booking");
@@ -198,8 +198,9 @@ public class BookingService {
         return seatIds;
     }
 
-    private BookingResponse doHold(String userId, Long eventId, List<Long> seatIds, String idempotencyKey,
+    private BookingResponse doHold(String userId, HoldRequest request, List<Long> seatIds, String idempotencyKey,
                                    SeatLockStrategy strategy) {
+        Long eventId = request.eventId();
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new NotFoundException("Event " + eventId + " not found"));
 
@@ -225,6 +226,8 @@ public class BookingService {
         booking.setTotalCents(seats.stream().mapToLong(Seat::getPriceCents).sum());
         booking.setExpiresAt(expiresAt);
         booking.setIdempotencyKey(idempotencyKey);
+        booking.setCustomerName(request.normalizedName());
+        booking.setCustomerEmail(request.normalizedEmail());
         bookingRepository.save(booking);
 
         for (Seat seat : seats) {
@@ -313,7 +316,14 @@ public class BookingService {
         metrics.transition(booking.getStatus().name());
         outbox.add("booking", booking.getId(), type, Topics.BOOKING_EVENTS, new Messages.BookingEvent(
                 type, booking.getId(), booking.getEvent().getId(), booking.getUserId(), booking.getStatus().name(),
-                booking.getTotalCents(), items.stream().map(i -> i.getSeat().getId()).toList(), Instant.now()));
+                booking.getTotalCents(), items.stream().map(i -> i.getSeat().getId()).toList(), Instant.now(),
+                booking.getEvent().getName(),
+                items.stream().map(i -> label(i.getSeat())).toList(),
+                booking.getCustomerName(), booking.getCustomerEmail()));
+    }
+
+    private static String label(Seat seat) {
+        return seat.getSection() + " " + seat.getRowLabel() + seat.getSeatNumber();
     }
 
     public List<Seat> seatsOf(Long bookingId) {
