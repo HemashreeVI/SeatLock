@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SeatLock Demo</title>
+<meta name="description" content="Live demo of SeatLock, a high-concurrency ticket booking engine that never double-books a seat.">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #17191c; --muted: #5d6470; --border: #dfe2e7;
+    --accent: #3451d1; --accent-text: #ffffff;
+    --free: #1f9d55; --free-bg: #e7f6ee; --held: #b7791f; --held-bg: #fdf3e1;
+    --booked: #c53030; --booked-bg: #fde8e8; --mine: #7c3aed; --mine-bg: #f1eafe;
+    --ok: #1f9d55; --bad: #c53030;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111316; --panel: #1a1d21; --text: #e8eaed; --muted: #9aa1ab; --border: #2c3036;
+      --accent: #7b93ff; --accent-text: #0b0d10;
+      --free: #48bb78; --free-bg: #173225; --held: #ecc94b; --held-bg: #3a3116;
+      --booked: #fc8181; --booked-bg: #3d1d1d; --mine: #b794f4; --mine-bg: #2d2145;
+      --ok: #48bb78; --bad: #fc8181;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header, main { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+  header { padding-top: 28px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .tagline { color: var(--muted); margin: 0 0 12px; }
+  .links a { color: var(--accent); margin-right: 14px; text-decoration: none; font-weight: 500; }
+  .links a:hover { text-decoration: underline; }
+  .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; margin: 20px auto 40px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .stack > * + * { margin-top: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  label { color: var(--muted); font-size: 13px; }
+  input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+                  border-radius: 8px; padding: 6px 10px; min-width: 0; }
+  button { font: inherit; border-radius: 8px; border: 1px solid var(--border); background: var(--panel);
+           color: var(--text); padding: 7px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .pill { border-radius: 999px; padding: 3px 10px; font-size: 13px; border: 1px solid var(--border); }
+  .pill.free { color: var(--free); background: var(--free-bg); border-color: transparent; }
+  .pill.held { color: var(--held); background: var(--held-bg); border-color: transparent; }
+  .pill.booked { color: var(--booked); background: var(--booked-bg); border-color: transparent; }
+  .pill.good { color: var(--ok); font-weight: 600; }
+  .pill.bad { color: var(--bad); font-weight: 600; }
+  .section-title { font-weight: 600; margin: 14px 0 6px; font-size: 13px; color: var(--muted); letter-spacing: .04em; }
+  .seat-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; overflow-x: auto; }
+  .row-label { width: 18px; color: var(--muted); font-size: 12px; flex: none; }
+  .seat { width: 28px; height: 28px; padding: 0; flex: none; font-size: 11px; border-radius: 6px; border: 1px solid transparent; }
+  .seat.AVAILABLE { background: var(--free-bg); color: var(--free); border-color: var(--free); }
+  .seat:disabled { opacity: 1; }
+  .seat.HELD { background: var(--held-bg); color: var(--held); cursor: not-allowed; }
+  .seat.BOOKED { background: var(--booked-bg); color: var(--booked); cursor: not-allowed; }
+  .seat.mine { background: var(--mine-bg); color: var(--mine); border: 2px solid var(--mine); font-weight: 700; }
+  .seat.selected { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  @media (max-width: 480px) {
+    .seat { width: 22px; height: 22px; font-size: 10px; border-radius: 5px; }
+    .seat-row { gap: 3px; }
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .lg-free::before { background: var(--free); } .lg-held::before { background: var(--held); }
+  .lg-booked::before { background: var(--booked); } .lg-mine::before { background: var(--mine); }
+  .lg-sel::before { background: var(--accent); }
+  .status { min-height: 22px; font-size: 14px; margin-top: 10px; }
+  .status.error { color: var(--bad); } .status.ok { color: var(--ok); }
+  .booking { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .booking + .booking { margin-top: 8px; }
+  .booking .head { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+  .booking .meta { color: var(--muted); font-size: 13px; margin: 2px 0 8px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  ul.notes { list-style: none; padding: 0; margin: 0; }
+  ul.notes li { font-size: 13px; padding: 6px 0; border-top: 1px solid var(--border); }
+  ul.notes li:first-child { border-top: 0; }
+  .race-result { font-size: 14px; margin-top: 8px; }
+  code { font-size: 13px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎟️ SeatLock: live demo</h1>
+  <p class="tagline">A high-concurrency ticket booking engine that never sells a seat twice. Pick seats, hold them for 10 minutes, pay, or fire 50 buyers at one seat at the same instant.</p>
+  <nav class="links">
+    <a href="https://github.com/HemashreeVI/seatlock-" rel="noopener">Source on GitHub</a>
+    <a href="https://github.com/HemashreeVI/seatlock-/blob/main/DESIGN.md" rel="noopener">How it works</a>
+    <a href="/actuator/health">Health</a>
+    <a href="/api/events">Raw API</a>
+  </nav>
+</header>
+
+<main class="grid">
+  <section class="panel">
+    <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+      <div class="row">
+        <label for="event">Event</label>
+        <select id="event" aria-label="Event"></select>
+      </div>
+      <div class="row">
+        <label for="user">You are</label>
+        <input id="user" size="14" aria-label="Your user id">
+      </div>
+    </div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+    <div id="seatmap" aria-label="Seat map"><p class="muted">Loading seats… (a sleeping free server takes about a minute to wake up)</p></div>
+    <div class="legend">
+      <span class="lg-free">Available</span><span class="lg-sel">Selected</span><span class="lg-mine">Your hold</span>
+      <span class="lg-held">Held by someone</span><span class="lg-booked">Booked</span>
+    </div>
+    <div class="row" style="margin-top: 14px;">
+      <button class="primary" id="hold" disabled>Hold selected seats</button>
+      <button id="clear" disabled>Clear selection</button>
+      <span class="muted" id="selection"></span>
+    </div>
+    <div class="status" id="status" role="status"></div>
+  </section>
+
+  <aside class="stack">
+    <section class="panel">
+      <h2>Race: 50 buyers, 1 seat</h2>
+      <p class="muted" style="margin-top: 0;">Sends 50 hold requests for the same seat from 50 different users, all at once. Exactly one should win; the rest get <code>409 Conflict</code>.</p>
+      <button id="race">Start the race</button>
+      <div class="race-result" id="race-result" aria-live="polite"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Your bookings</h2>
+      <div id="bookings"><p class="muted">Hold some seats to see them here. Holds expire after 10 minutes.</p></div>
+    </section>
+
+    <section class="panel">
+      <h2>Your notifications</h2>
+      <ul class="notes" id="notes"><li class="muted">Nothing yet.</li></ul>
+    </section>
+  </aside>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+  const store = {
+    get(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
+    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ } },
+  };
+
+  let user = store.get('seatlock.user', null) || ('guest-' + Math.random().toString(36).slice(2, 7));
+  let eventId = null;
+  let seats = [];
+  let selected = new Set();
+  let myBookings = store.get('seatlock.bookings', []);   // [{id, eventId}]
+  const bookingCache = new Map();
+
+  $('user').value = user;
+  $('user').addEventListener('change', () => {
+    user = $('user').value.trim() || user;
+    $('user').value = user;
+    store.set('seatlock.user', user);
+    myBookings = [];
+    store.set('seatlock.bookings', myBookings);
+    bookingCache.clear();
+    refreshAll();
+  });
+  store.set('seatlock.user', user);
+
+  async function api(method, path, body, headers = {}) {
+    const res = await fetch(path, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': headers.user || user, ...headers.extra },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = null;
+    try { data = await res.json(); } catch { /* empty body */ }
+    return { status: res.status, ok: res.ok, data };
+  }
+
+  function say(message, kind = '') {
+    const el = $('status');
+    el.textContent = message;
+    el.className = 'status ' + kind;
+  }
+
+  function problem(res) {
+    return (res.data && (res.data.detail || res.data.title)) || ('HTTP ' + res.status);
+  }
+
+  async function loadEvents() {
+    const res = await api('GET', '/api/events');
+    if (!res.ok) { say('Could not load events: ' + problem(res), 'error'); return; }
+    const upcoming = res.data.filter((e) => new Date(e.startsAt) > new Date());
+    const select = $('event');
+    select.replaceChildren();
+    for (const e of upcoming.length ? upcoming : res.data) {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = `${e.name} · ${new Date(e.startsAt).toLocaleDateString()}`;
+      select.append(opt);
+    }
+    const preferred = upcoming.find((e) => e.name.includes('Demo')) || upcoming[upcoming.length - 1] || res.data[0];
+    if (preferred) { select.value = preferred.id; eventId = preferred.id; }
+  }
+
+  $('event').addEventListener('change', () => {
+    eventId = Number($('event').value);
+    selected.clear();
+    refreshAll();
+  });
+
+  function mySeatIds() {
+    const ids = new Set();
+    for (const b of bookingCache.values()) {
+      if (['HELD', 'PAYMENT_PENDING', 'CONFIRMED'].includes(b.status)) b.seats.forEach((s) => ids.add(s.id));
+    }
+    return ids;
+  }
+
+  async function loadSeats() {
+    if (!eventId) return;
+    const res = await api('GET', `/api/events/${eventId}/seats`);
+    if (!res.ok) { say('Could not load seats: ' + problem(res), 'error'); return; }
+    seats = res.data;
+    for (const id of [...selected]) {
+      if (!seats.some((s) => s.id === id && s.status === 'AVAILABLE')) selected.delete(id);
+    }
+    renderSeats();
+  }
+
+  function renderSeats() {
+    const mine = mySeatIds();
+    const map = $('seatmap');
+    map.replaceChildren();
+    const sections = new Map();
+    for (const s of seats) {
+      if (!sections.has(s.section)) sections.set(s.section, new Map());
+      const rows = sections.get(s.section);
+      if (!rows.has(s.rowLabel)) rows.set(s.rowLabel, []);
+      rows.get(s.rowLabel).push(s);
+    }
+    for (const [section, rows] of sections) {
+      const title = document.createElement('div');
+      title.className = 'section-title';
+      const anySeat = rows.values().next().value[0];
+      title.textContent = `${section} · ${money.format(anySeat.priceCents / 100)}`;
+      map.append(title);
+      for (const [rowLabel, rowSeats] of rows) {
+        const row = document.createElement('div');
+        row.className = 'seat-row';
+        const label = document.createElement('span');
+        label.className = 'row-label';
+        label.textContent = rowLabel;
+        row.append(label);
+        for (const s of rowSeats) {
+          const b = document.createElement('button');
+          b.className = 'seat ' + s.status + (mine.has(s.id) ? ' mine' : '') + (selected.has(s.id) ? ' selected' : '');
+          b.textContent = s.seatNumber;
+          b.disabled = s.status !== 'AVAILABLE';
+          b.setAttribute('aria-label', `${section} row ${rowLabel} seat ${s.seatNumber}, ${s.status.toLowerCase()}`);
+          b.setAttribute('aria-pressed', selected.has(s.id));
+          b.addEventListener('click', () => {
+            if (selected.has(s.id)) selected.delete(s.id);
+            else if (selected.size < 10) selected.add(s.id);
+            else say('At most 10 seats per booking.', 'error');
+            renderSeats();
+          });
+          row.append(b);
+        }
+        map.append(row);
+      }
+    }
+    const total = seats.filter((s) => selected.has(s.id)).reduce((sum, s) => sum + s.priceCents, 0);
+    $('selection').textContent = selected.size ? `${selected.size} seat(s) · ${money.format(total / 100)}` : '';
+    $('hold').disabled = selected.size === 0;
+    $('clear').disabled = selected.size === 0;
+  }
+
+  async function loadStats() {
+    if (!eventId) return;
+    const res = await api('GET', `/api/events/${eventId}/stats`);
+    if (!res.ok) return;
+    const s = res.data.seatsByStatus;
+    const el = $('stats');
+    el.replaceChildren();
+    const pill = (cls, text) => { const p = document.createElement('span'); p.className = 'pill ' + cls; p.textContent = text; el.append(p); };
+    pill('free', `${s.AVAILABLE || 0} available`);
+    pill('held', `${s.HELD || 0} held`);
+    pill('booked', `${s.BOOKED || 0} booked`);
+    pill(res.data.doubleBookedSeats === 0 ? 'good' : 'bad',
+         res.data.doubleBookedSeats === 0 ? '✓ 0 double-bookings' : `✗ ${res.data.doubleBookedSeats} double-booked`);
+  }
+
+  $('clear').addEventListener('click', () => { selected.clear(); renderSeats(); });
+
+  $('hold').addEventListener('click', async () => {
+    const seatIds = [...selected];
+    $('hold').disabled = true;
+    say('Holding…');
+    const res = await api('POST', '/api/bookings', { eventId, seatIds },
+                          { extra: { 'Idempotency-Key': crypto.randomUUID() } });
+    if (res.status === 201 || res.status === 200) {
+      say(`Held ${seatIds.length} seat(s) for 10 minutes. Pay below to confirm.`, 'ok');
+      myBookings.push({ id: res.data.id, eventId });
+      store.set('seatlock.bookings', myBookings);
+      bookingCache.set(res.data.id, res.data);
+      selected.clear();
+    } else {
+      say(`Could not hold: ${problem(res)}`, 'error');
+    }
+    await refreshAll();
+  });
+
+  async function loadBookings() {
+    const container = $('bookings');
+    const fresh = await Promise.all(myBookings.map((b) => api('GET', `/api/bookings/${b.id}`)));
+    fresh.forEach((res, i) => { if (res.ok) bookingCache.set(myBookings[i].id, res.data); });
+    const list = myBookings.map((b) => bookingCache.get(b.id)).filter(Boolean).reverse();
+    if (!list.length) return;
+    container.replaceChildren();
+    for (const b of list) {
+      const card = document.createElement('div');
+      card.className = 'booking';
+      const head = document.createElement('div');
+      head.className = 'head';
+      const name = document.createElement('span');
+      name.textContent = `Booking #${b.id}`;
+      const st = document.createElement('span');
+      st.className = 'pill ' + ({ CONFIRMED: 'good', CANCELLED: 'bad', EXPIRED: 'bad' }[b.status] || 'held');
+      st.textContent = b.status.replace('_', ' ');
+      head.append(name, st);
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      const seatNames = b.seats.map((s) => `${s.section} ${s.rowLabel}${s.seatNumber}`).join(', ');
+      let text = `${seatNames} · ${money.format(b.totalCents / 100)}`;
+      if (b.status === 'HELD') {
+        const left = Math.max(0, Math.round((new Date(b.expiresAt) - new Date()) / 1000));
+        text += ` · expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+      }
+      meta.textContent = text;
+      card.append(head, meta);
+      if (b.status === 'HELD') {
+        const actions = document.createElement('div');
+        actions.className = 'row';
+        const pay = document.createElement('button');
+        pay.className = 'primary';
+        pay.textContent = 'Pay';
+        pay.addEventListener('click', () => payFor(b.id, 'tok_visa'));
+        const decline = document.createElement('button');
+        decline.textContent = 'Pay with declined card';
+        decline.addEventListener('click', () => payFor(b.id, 'tok_fail_demo'));
+        const cancel = document.createElement('button');
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', async () => {
+          const res = await api('DELETE', `/api/bookings/${b.id}`);
+          say(res.ok ? `Booking #${b.id} cancelled; seats released.` : `Could not cancel: ${problem(res)}`, res.ok ? 'ok' : 'error');
+          await refreshAll();
+        });
+        actions.append(pay, decline, cancel);
+        card.append(actions);
+      }
+      container.append(card);
+    }
+  }
+
+  async function payFor(bookingId, token) {
+    say('Payment requested… (processed asynchronously through the outbox)');
+    const res = await api('POST', `/api/bookings/${bookingId}/payments`, { paymentToken: token },
+                          { extra: { 'Idempotency-Key': `pay-${bookingId}-${token}` } });
+    if (res.status !== 202) { say(`Payment refused: ${problem(res)}`, 'error'); return; }
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 700));
+      const b = await api('GET', `/api/bookings/${bookingId}`);
+      if (b.ok && ['CONFIRMED', 'CANCELLED'].includes(b.data.status)) {
+        bookingCache.set(bookingId, b.data);
+        say(b.data.status === 'CONFIRMED'
+              ? `Booking #${bookingId} confirmed: your seats are booked.`
+              : `Card declined: booking #${bookingId} was cancelled and its seats released (saga compensation).`,
+            b.data.status === 'CONFIRMED' ? 'ok' : 'error');
+        break;
+      }
+    }
+    await refreshAll();
+  }
+
+  async function loadNotifications() {
+    const res = await api('GET', '/api/notifications');
+    if (!res.ok || !res.data.length) return;
+    const ul = $('notes');
+    ul.replaceChildren();
+    for (const n of res.data.slice(0, 8)) {
+      const li = document.createElement('li');
+      li.textContent = n.message;
+      ul.append(li);
+    }
+  }
+
+  $('race').addEventListener('click', async () => {
+    const free = seats.filter((s) => s.status === 'AVAILABLE');
+    const target = free.find((s) => selected.has(s.id)) || free[Math.floor(Math.random() * free.length)];
+    if (!target) { $('race-result').textContent = 'No free seat left to race for.'; return; }
+    $('race').disabled = true;
+    $('race-result').textContent = `50 buyers racing for ${target.section} ${target.rowLabel}${target.seatNumber}…`;
+    const run = Math.random().toString(36).slice(2, 6);
+    const started = performance.now();
+    const results = await Promise.all(Array.from({ length: 50 }, (_, i) =>
+      api('POST', '/api/bookings', { eventId, seatIds: [target.id] }, { user: `racer-${run}-${i + 1}` })
+        .catch(() => ({ status: 0 }))));
+    const ms = Math.round(performance.now() - started);
+    const won = results.filter((r) => r.status === 201).length;
+    const lost = results.filter((r) => r.status === 409).length;
+    const other = results.length - won - lost;
+    $('race-result').textContent =
+      `${won} winner · ${lost} got 409 Conflict${other ? ` · ${other} other (rate limited or error)` : ''} · ${ms} ms. ` +
+      (won === 1 ? 'Exactly one buyer got the seat. ✓' : won === 0 ? 'Nobody won (the seat was taken just before).' : '✗ more than one winner!');
+    $('race').disabled = false;
+    await refreshAll();
+  });
+
+  let refreshing = false;
+  async function refreshAll() {
+    if (refreshing) return;
+    refreshing = true;
+    try {
+      await loadBookings();
+      await Promise.all([loadSeats(), loadStats(), loadNotifications()]);
+    } catch (e) {
+      say('The server is not reachable right now (a free server may still be waking up). Retrying…', 'error');
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  (async function start() {
+    for (let attempt = 0; attempt < 20 && eventId === null; attempt++) {
+      try { await loadEvents(); } catch { say('Waking up the server… this can take about a minute on the free plan.'); }
+      if (eventId === null) await new Promise((r) => setTimeout(r, 5000));
+    }
+    say('');
+    await refreshAll();
+    setInterval(refreshAll, 4000);
+  })();
+})();
+</script>
+</body>
+</html>
