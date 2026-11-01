@@ -27,6 +27,9 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
     @Query("select s from Seat s where s.id in :ids order by s.id")
     List<Seat> findAllByIdForUpdate(@Param("ids") Collection<Long> ids);
 
+    @Query("select count(s) from Seat s where s.status = :status and s.event.startsAt > :after")
+    long countByStatusInEventsStartingAfter(@Param("status") SeatStatus status, @Param("after") java.time.Instant after);
+
     @Query("select s.status, count(s) from Seat s where s.event.id = :eventId group by s.status")
     List<Object[]> countByStatus(@Param("eventId") Long eventId);
 }

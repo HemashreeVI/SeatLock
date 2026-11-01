@@ -1,0 +1,42 @@
+# ============================================================
+# "demo" profile: free-tier public deployment (Render + Neon + Upstash), no Kafka.
+# Activate with SPRING_PROFILES_ACTIVE=demo. See DEPLOY.md.
+# ============================================================
+spring:
+  autoconfigure:
+    exclude:
+      # no broker in the demo: messages go straight from the outbox to the handlers
+      - org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration
+      - org.springframework.boot.kafka.autoconfigure.metrics.KafkaMetricsAutoConfiguration
+  datasource:
+    hikari:
+      maximum-pool-size: 5            # free Postgres plans allow few connections
+      minimum-idle: 1
+
+server:
+  # Render terminates HTTPS and forwards the client IP in X-Forwarded-For; trust it so the
+  # per-IP rate limit sees real visitors instead of the proxy
+  forward-headers-strategy: native
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info          # don't publish metrics on the public internet
+  endpoint:
+    health:
+      show-details: never
+      show-components: always         # still shows db / redis UP or DOWN
+  tracing:
+    sampling:
+      probability: 0.0
+
+seatlock:
+  messaging:
+    mode: local
+  queue:
+    admit-interval-ms: 30000          # keeps Redis usage far below the free command quota
+  payment:
+    reconcile-interval-ms: 60000
+  demo:
+    seed: true                        # always keep an upcoming event with free seats

@@ -19,4 +19,7 @@ public interface OutboxRepository extends JpaRepository<OutboxEvent, Long> {
     List<OutboxEvent> lockUnpublished(@Param("limit") int limit);
 
     long countByPublishedAtIsNull();
+
+    @Query(value = "SELECT id FROM outbox_events WHERE published_at IS NULL ORDER BY id LIMIT :limit", nativeQuery = true)
+    List<Long> findUnpublishedIds(@Param("limit") int limit);
 }

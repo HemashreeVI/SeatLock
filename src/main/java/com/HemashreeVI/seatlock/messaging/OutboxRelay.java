@@ -3,6 +3,7 @@ package com.HemashreeVI.seatlock.messaging;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,10 +20,11 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = MessagingMode.PROPERTY, havingValue = MessagingMode.KAFKA, matchIfMissing = true)
 public class OutboxRelay {
 
-    public static final String HEADER_EVENT_ID = "eventId";
-    public static final String HEADER_EVENT_TYPE = "eventType";
+    public static final String HEADER_EVENT_ID = Topics.HEADER_EVENT_ID;
+    public static final String HEADER_EVENT_TYPE = Topics.HEADER_EVENT_TYPE;
 
     private final OutboxRepository repository;
     private final KafkaTemplate<String, String> kafka;

@@ -10,6 +10,10 @@ public final class Topics {
     /** booking lifecycle facts (confirmed, cancelled, expired) for anyone interested. */
     public static final String BOOKING_EVENTS = "seatlock.bookings.events";
 
+    /** Kafka header carrying the outbox row id (stable across redeliveries). */
+    public static final String HEADER_EVENT_ID = "eventId";
+    public static final String HEADER_EVENT_TYPE = "eventType";
+
     /** Spring Kafka's default dead-letter topic suffix. */
     public static final String DLT_SUFFIX = "-dlt";
 
