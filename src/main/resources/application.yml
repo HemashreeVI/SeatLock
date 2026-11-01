@@ -18,6 +18,12 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all                       # wait until the broker has safely stored the message
+    consumer:
+      auto-offset-reset: earliest     # a new consumer group starts from the beginning
 
 management:
   endpoint:
@@ -38,3 +44,5 @@ seatlock:
     redis-lock-ttl: 5s
   payment:
     fake-latency-ms: 0
+  outbox:
+    relay-interval-ms: 200

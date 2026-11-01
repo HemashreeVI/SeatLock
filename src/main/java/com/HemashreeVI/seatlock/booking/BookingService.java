@@ -11,6 +11,9 @@ import com.HemashreeVI.seatlock.config.BookingProperties;
 import com.HemashreeVI.seatlock.config.LockingProperties;
 import com.HemashreeVI.seatlock.event.Event;
 import com.HemashreeVI.seatlock.event.EventRepository;
+import com.HemashreeVI.seatlock.messaging.Messages;
+import com.HemashreeVI.seatlock.messaging.Outbox;
+import com.HemashreeVI.seatlock.messaging.Topics;
 import com.HemashreeVI.seatlock.seat.Seat;
 import com.HemashreeVI.seatlock.seat.SeatStatus;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +54,7 @@ public class BookingService {
     private final TransactionTemplate readOnlyTx;
     private final Map<LockingStrategyType, SeatLockStrategy> strategies = new EnumMap<>(LockingStrategyType.class);
     private final SeatLockStrategy defaultStrategy;
+    private final Outbox outbox;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingSeatRepository bookingSeatRepository,
@@ -58,7 +62,9 @@ public class BookingService {
                           BookingProperties properties,
                           LockingProperties lockingProperties,
                           List<SeatLockStrategy> strategyBeans,
-                          PlatformTransactionManager transactionManager) {
+                          PlatformTransactionManager transactionManager,
+                          Outbox outbox) {
+        this.outbox = outbox;
         this.bookingRepository = bookingRepository;
         this.bookingSeatRepository = bookingSeatRepository;
         this.eventRepository = eventRepository;
@@ -221,18 +227,21 @@ public class BookingService {
 
     // ------------------------------------------------------------------ state transitions (call inside a transaction)
 
-    /** HELD -> CONFIRMED, seats -> BOOKED. Caller must hold the booking row lock. */
+    /** HELD/PAYMENT_PENDING -> CONFIRMED, seats -> BOOKED. Caller must hold the booking row lock. */
     public void confirm(Booking booking) {
-        for (BookingSeat item : bookingSeatRepository.findByBookingIdWithSeats(booking.getId())) {
+        List<BookingSeat> items = bookingSeatRepository.findByBookingIdWithSeats(booking.getId());
+        for (BookingSeat item : items) {
             item.getSeat().book();
         }
         booking.setStatus(BookingStatus.CONFIRMED);
+        publish(booking, "BookingConfirmed", items);
         log.info("Booking {} confirmed", booking.getId());
     }
 
-    /** HELD -> CANCELLED/EXPIRED, seats -> AVAILABLE. Caller must hold the booking row lock. */
+    /** HELD/PAYMENT_PENDING -> CANCELLED/EXPIRED, seats -> AVAILABLE. Caller must hold the booking row lock. */
     public void release(Booking booking, BookingStatus newStatus) {
-        for (BookingSeat item : bookingSeatRepository.findByBookingIdWithSeats(booking.getId())) {
+        List<BookingSeat> items = bookingSeatRepository.findByBookingIdWithSeats(booking.getId());
+        for (BookingSeat item : items) {
             if (!item.isActive()) {
                 continue;
             }
@@ -243,7 +252,15 @@ public class BookingService {
             }
         }
         booking.setStatus(newStatus);
+        publish(booking, newStatus == BookingStatus.EXPIRED ? "BookingExpired" : "BookingCancelled", items);
         log.info("Booking {} {}", booking.getId(), newStatus);
+    }
+
+    /** Written to the outbox in the same transaction as the state change. */
+    private void publish(Booking booking, String type, List<BookingSeat> items) {
+        outbox.add("booking", booking.getId(), type, Topics.BOOKING_EVENTS, new Messages.BookingEvent(
+                type, booking.getId(), booking.getEvent().getId(), booking.getUserId(), booking.getStatus().name(),
+                booking.getTotalCents(), items.stream().map(i -> i.getSeat().getId()).toList(), Instant.now()));
     }
 
     public List<Seat> seatsOf(Long bookingId) {
