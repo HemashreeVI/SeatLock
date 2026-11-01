@@ -1,27 +1,24 @@
-# 🎟️ SeatLock
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="SeatLock: Thousands of buyers. One seat. Zero double-bookings.">
+</p>
 
-> High-concurrency ticket booking engine built with Spring Boot, Redis & Kafka — designed to guarantee **zero double-bookings** under thousands of simultaneous requests.
+<p align="center">
+  <img src="https://img.shields.io/badge/Java_21-E8B04B?style=for-the-badge" alt="Java 21"> <img src="https://img.shields.io/badge/Spring_Boot_4.1-E8B04B?style=for-the-badge" alt="Spring Boot 4.1"> <img src="https://img.shields.io/badge/PostgreSQL_16-E8B04B?style=for-the-badge" alt="PostgreSQL 16"> <img src="https://img.shields.io/badge/Redis_7-E8B04B?style=for-the-badge" alt="Redis 7"> <img src="https://img.shields.io/badge/Kafka_4.1-E8B04B?style=for-the-badge" alt="Kafka 4.1"> <img src="https://img.shields.io/badge/k6-E8B04B?style=for-the-badge" alt="k6">
+</p>
 
-![Java](https://img.shields.io/badge/Java-21-orange)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-brightgreen)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
-![Redis](https://img.shields.io/badge/Redis-7-red)
-![Kafka](https://img.shields.io/badge/Kafka-4.1-black)
-![Tests](https://img.shields.io/badge/tests-48%20passing-success)
+<img src="./assets/readme/title-features.svg" width="100%" alt="01 Features: What it does.">
+<img src="./assets/readme/features.svg" width="100%" alt="SeatLock features">
 
----
+<img src="./assets/readme/title-flow.svg" width="100%" alt="02 Booking Flow: From browse to booked.">
+<img src="./assets/readme/flow.svg" width="100%" alt="Browse → Queue → Hold → Pay → Confirm → Release → Notify">
 
-## 📌 The Problem
+<img src="./assets/readme/title-table.svg" width="100%" alt="03 Load Test: 500 buyers, 100 seats.">
+<img src="./assets/readme/table.svg" width="100%" alt="Load Test">
 
-When a popular event goes on sale, thousands of users try to book the same limited seats at the same moment. A naive booking system fails in three ways:
+<img src="./assets/readme/title-stack.svg" width="100%" alt="04 Tech stack: The tools behind it.">
+<img src="./assets/readme/stack.svg" width="100%" alt="SeatLock tech stack">
 
-1. **Double-booking:** two users read "seat available" at the same time and both get the seat.
-2. **System overload:** a sudden traffic spike overwhelms the database.
-3. **Duplicate payments:** a network retry or double-click charges the user twice.
-
-**SeatLock** is a backend system designed to handle exactly this scenario correctly, reliably, and at scale.
-
----
+<img src="./assets/readme/title-run.svg" width="100%" alt="05 Run it: Try it yourself.">
 
 ## 🌐 Live demo
 
@@ -32,76 +29,6 @@ Open `/` on a running instance for an interactive demo: a **live** seat map (sea
 
 **Live:** https://seatlock-7ba6.onrender.com (free server: it sleeps when idle, so the first visit can take about 2 minutes to wake it up)
 
----
-
-## ✨ Features
-
-| Feature | Description | Status |
-|---|---|---|
-| Event & seat management | Create events with generated seat layouts, query availability | ✅ Done |
-| Temporary seat holds | Seats are held for 10 minutes and auto-released on timeout | ✅ Done |
-| Concurrency control | Optimistic, pessimistic & Redis distributed locking (switchable), backed by DB constraints | ✅ Done |
-| Idempotent requests | `Idempotency-Key` on holds and payments: retries never double-book or double-charge | ✅ Done |
-| Event-driven workflow | Booking → payment → notification via Kafka, transactional outbox | ✅ Done |
-| Saga with compensation | Failed payments automatically release reserved seats | ✅ Done |
-| Seat-map caching | Seat map served from Redis, evicted on every change | ✅ Done |
-| Rate limiting | Distributed token-bucket limiter (Redis + Lua) | ✅ Done |
-| Virtual waiting queue | FIFO waiting room with admission tokens for hot events | ✅ Done |
-| Observability | Prometheus metrics, Grafana dashboard, trace ids in logs | ✅ Done |
-| Live seat map | Server-Sent Events push seat changes to every viewer within a second | ✅ Done |
-| Email notifications | Real confirmation / cancellation / expiry emails via Brevo (free tier) | ✅ Done |
-
----
-
-## 🏗️ Architecture
-
-SeatLock is a **modular monolith**: one deployable application with strictly separated modules (`event`, `seat`, `booking`, `payment`, `notification`, `queue`, `ratelimit`, `messaging`). Modules talk through Kafka where it matters, so any of them could be extracted into a microservice later.
-
-```mermaid
-flowchart LR
-    Client([Client]) --> RL[Rate limiter<br/>token bucket]
-    RL --> Q[Waiting room<br/>hot events only]
-    Q --> Booking[Booking module]
-    Client -. browse .-> Seats[Seat map]
-    Seats --> Redis[(Redis<br/>cache · locks · queue · buckets)]
-    Booking --> Redis
-    Booking --> PG[(PostgreSQL<br/>source of truth + outbox)]
-    PG -- outbox relay --> Kafka{{Kafka}}
-    Kafka -- PaymentRequested --> Payment[Payment module]
-    Payment -- PaymentCompleted --> Kafka
-    Kafka -- PaymentCompleted --> Booking
-    Kafka -- BookingConfirmed / Cancelled / Expired --> Notify[Notification module]
-```
-
-### Booking flow
-
-1. **Browse:** `GET /api/events/{id}/seats` is served from the Redis cache.
-2. **(Hot events) Queue:** join the waiting room, get an admission token when it's your turn.
-3. **Hold:** `POST /api/bookings` locks the seats for 10 minutes (seat → `HELD`).
-4. **Pay:** `POST /api/bookings/{id}/payments` with an `Idempotency-Key` returns `202 Accepted`. The booking moves to `PAYMENT_PENDING` and a `PaymentRequested` message goes to the outbox.
-5. **Confirm:** the payment module charges the gateway; on success the booking becomes `CONFIRMED` and the seats `BOOKED`.
-6. **Release:** on payment failure (saga compensation), cancellation or timeout, the seats go back to `AVAILABLE`.
-7. **Notify:** every confirmed/cancelled/expired booking produces exactly one notification.
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Language | Java 21 (virtual threads) |
-| Framework | Spring Boot 4.1, Spring Data JPA (Hibernate 7), Spring Kafka |
-| Database | PostgreSQL 16 + Flyway migrations |
-| Cache, locks, queue, rate limits | Redis 7 (Lua scripts for atomic operations) |
-| Messaging | Apache Kafka 4.1 (KRaft) |
-| Testing | JUnit 5, Testcontainers (real Postgres, Redis, Kafka), Awaitility |
-| Load testing | k6 |
-| Observability | Micrometer, Prometheus, Grafana, Micrometer Tracing (Brave) |
-| DevOps | Docker, Docker Compose, GitHub Actions |
-
-> Authentication is out of scope for now: callers identify themselves with an `X-User-Id` header. Spring Security (JWT) would replace this.
-
----
 
 ## 🚀 Getting Started
 
@@ -159,7 +86,6 @@ All tests start their own Postgres, Redis and Kafka containers (Docker must be r
 ./mvnw verify
 ```
 
----
 
 ## 📖 API
 
@@ -213,54 +139,6 @@ curl -s -X POST localhost:8080/api/bookings/$BOOKING_ID/payments -H 'Content-Typ
 curl -s localhost:8080/api/bookings/$BOOKING_ID -H 'X-User-Id: alice'
 ```
 
----
-
-## 📊 Load Test Results
-
-[`load-test/booking-rush.js`](./load-test/booking-rush.js): **500 concurrent users** hammering **100 seats** for **30 s** with no think time. Each user requests 1–2 seats, biased towards the front rows. The test exercises the **hold** path; it doesn't pay. At the end it calls `/stats`, whose audit counts every seat that was *ever* owned by two bookings at overlapping times, including bookings that later expired or were cancelled. The run fails if that count isn't 0, or if nobody managed to hold a seat at all.
-
-All load-test traffic comes from one IP, so to measure the booking path itself the app is started with rate limiting off:
-
-```bash
-java -Dseatlock.rate-limit.enabled=false -jar target/seatlock-0.0.1-SNAPSHOT.jar
-```
-```bash
-k6 run -e VUS=500 -e SEATS=100 -e DURATION=30s load-test/booking-rush.js
-```
-
-| Locking strategy | Hold requests | Throughput | p50 | p95 | p99 | Seats held | **Double-bookings** |
-|---|---|---|---|---|---|---|---|
-| Pessimistic (`FOR UPDATE`) | 72,828 | 2,411 req/s | 171 ms | 448 ms | 694 ms | 100 / 100 | **0** |
-| Optimistic (`@Version`) | 65,028 | 2,148 req/s | 187 ms | 473 ms | 760 ms | 100 / 100 | **0** |
-| Redis distributed lock | 75,330 | 2,491 req/s | 166 ms | 418 ms | 629 ms | 100 / 100 | **0** |
-
-Effect of the fast-reject pre-check (requests for seats the cached seat map already shows as taken get a 409 without touching the database), measured in an earlier round of the same test:
-
-| Strategy | Without fast-reject | With fast-reject |
-|---|---|---|
-| Pessimistic | 897 req/s, p95 1.26 s | 2,171 req/s, p95 417 ms |
-| Optimistic | 1,077 req/s, p95 1.05 s | 2,153 req/s, p95 412 ms |
-| Redis lock | 1,954 req/s, p95 498 ms | 2,330 req/s, p95 370 ms |
-
-**With rate limiting on** (default settings, pessimistic): the single-IP flood of 260,459 requests got `429` for 99.4% of them. Those were answered from Redis in p95 95 ms, and the 100 seats were still all held with 0 double-bookings.
-
-> Measured on a single 4-vCPU / 15 GB machine running k6, the app, PostgreSQL, Redis and Kafka **together**, so the absolute numbers are bounded by that box. Each run used a fresh JVM after a 15 s warm-up. With 500 users and zero think time, most of the latency is queueing; at 100 users (pessimistic, without fast-reject) the p95 was 173 ms. The point of the test is the last column: across more than 500,000 contended hold attempts in these runs, **no seat was ever held by two bookings at the same time**.
-
-The concurrency tests in [`BookingConcurrencyTest`](./src/test/java/com/HemashreeVI/seatlock/booking/BookingConcurrencyTest.java) check the same guarantee on every build: 200 threads racing for one seat give exactly one winner under each strategy, and 200 overlapping multi-seat requests never put a seat in two bookings.
-
----
-
-## 🗺️ Roadmap
-
-- [x] Project setup with Docker Compose (PostgreSQL, Redis)
-- [x] **Stage 1:** Core domain: events, seats, bookings, REST APIs
-- [x] **Stage 2:** Concurrency control, seat holds, idempotency
-- [x] **Stage 3:** Kafka-based payment & notification flow, outbox pattern, saga
-- [x] **Stage 4:** Caching, rate limiting, virtual waiting queue
-- [x] **Stage 5:** Observability, load testing, design document
-- [ ] Next: Spring Security (JWT), refund flow for late payment results, multi-instance load test
-
----
 
 ## 📁 Project Structure
 
@@ -283,8 +161,22 @@ load-test/                         k6 script
 observability/                     Prometheus config, Grafana dashboard
 ```
 
----
+
+## 🗺️ Roadmap
+
+- [x] Project setup with Docker Compose (PostgreSQL, Redis)
+- [x] **Stage 1:** Core domain: events, seats, bookings, REST APIs
+- [x] **Stage 2:** Concurrency control, seat holds, idempotency
+- [x] **Stage 3:** Kafka-based payment & notification flow, outbox pattern, saga
+- [x] **Stage 4:** Caching, rate limiting, virtual waiting queue
+- [x] **Stage 5:** Observability, load testing, design document
+- [ ] Next: Spring Security (JWT), refund flow for late payment results, multi-instance load test
+
 
 ## 📄 Design Decisions
 
 Locking strategies, consistency choices, failure handling and known limitations are explained in [`DESIGN.md`](./DESIGN.md).
+
+<p align="center">
+  <img src="./assets/readme/footer.svg" width="100%" alt="No seat is ever held by two bookings at the same time. Built by Hemashree.">
+</p>

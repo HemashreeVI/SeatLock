@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" width="1200" height="740" role="img" aria-labelledby="feat-t feat-d">
+<title id="feat-t">SeatLock features</title>
+<desc id="feat-d">Concurrency control: Optimistic, pessimistic and Redis locks, switchable, backed by DB constraints.; Temporary holds: Seats are held for 10 minutes and released automatically on timeout.; Idempotent requests: Retries and double-clicks never double-book or double-charge.; Event-driven saga: Booking → payment → notification via Kafka and a transactional outbox.; Compensation: A failed payment automatically releases the reserved seats.; Seat-map caching: Served from Redis and evicted on every change.; Rate limiting: Distributed token bucket with Redis and Lua.; Virtual waiting room: FIFO queue with admission tokens for hot events.; Observability: Prometheus metrics, Grafana dashboard, trace ids in logs.; Live seat map: Server-Sent Events push seat changes to every viewer within a second.; Email notifications: Real confirmation, cancellation and expiry emails via Brevo.; Public demo: Hold, pay, cancel and race 50 buyers for 1 seat on the live site.</desc>
+<style>
+.serif{font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,'Times New Roman',serif}.sans{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace}
+.twinkle{animation:tw 4s ease-in-out infinite}@keyframes tw{0%,100%{opacity:.15}50%{opacity:.9}}
+.pulse{animation:pl 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes pl{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.35)}}
+.spin{animation:sp 60s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.spinr{animation:sr 40s linear infinite}@keyframes sr{to{transform:rotate(-360deg)}}
+.float{animation:fl 6s ease-in-out infinite}@keyframes fl{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.fadein{animation:fi 1.2s ease-out both}@keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+<defs>
+<radialGradient id="feat-bg" cx="70%" cy="30%" r="90%"><stop offset="0" stop-color="#2A0F1B"/><stop offset=".55" stop-color="#170910"/><stop offset="1" stop-color="#0D0508"/></radialGradient>
+<radialGradient id="feat-glowA" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#9B1B3F" stop-opacity=".5"/><stop offset="1" stop-color="#9B1B3F" stop-opacity="0"/></radialGradient>
+<radialGradient id="feat-glowB" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#E8B04B" stop-opacity=".14"/><stop offset="1" stop-color="#E8B04B" stop-opacity="0"/></radialGradient>
+<linearGradient id="feat-metal" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".45" stop-color="#F6D58E"/><stop offset="1" stop-color="#E8B04B"/></linearGradient>
+<linearGradient id="feat-rule" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#E8B04B" stop-opacity="0"/><stop offset=".25" stop-color="#E8B04B" stop-opacity=".85"/><stop offset="1" stop-color="#E8B04B" stop-opacity="0"/></linearGradient>
+<pattern id="feat-grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#E8B04B" stroke-opacity=".05"/></pattern>
+</defs>
+<rect x="1" y="1" width="1198" height="738" rx="22" fill="url(#feat-bg)" stroke="#3A1626"/>
+<rect x="1" y="1" width="1198" height="738" rx="22" fill="url(#feat-grid)"/>
+<ellipse cx="240" cy="222" rx="420" ry="518" fill="url(#feat-glowA)"/>
+<ellipse cx="960" cy="518" rx="300" ry="370" fill="url(#feat-glowB)"/><rect x="40" y="40" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="74" cy="76" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="74" y="82" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >◆</text>
+<text x="102" y="82" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Concurrency control</text>
+<text x="62" y="122" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Optimistic, pessimistic and Redis locks,</text><text x="62" y="142" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >switchable, backed by DB constraints.</text>
+<rect x="62" y="176" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="6s" repeatCount="indefinite"/></rect><rect x="420" y="40" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="454" cy="76" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="454" y="82" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >◷</text>
+<text x="482" y="82" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Temporary holds</text>
+<text x="442" y="122" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Seats are held for 10 minutes and released</text><text x="442" y="142" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >automatically on timeout.</text>
+<rect x="442" y="176" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="7s" repeatCount="indefinite"/></rect><rect x="800" y="40" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="834" cy="76" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="834" y="82" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >⟲</text>
+<text x="862" y="82" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Idempotent requests</text>
+<text x="822" y="122" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Retries and double-clicks never double-book or</text><text x="822" y="142" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >double-charge.</text>
+<rect x="822" y="176" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="8s" repeatCount="indefinite"/></rect><rect x="40" y="210" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="74" cy="246" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="74" y="252" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >⇄</text>
+<text x="102" y="252" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Event-driven saga</text>
+<text x="62" y="292" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Booking → payment → notification via Kafka and</text><text x="62" y="312" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >a transactional outbox.</text>
+<rect x="62" y="346" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="9s" repeatCount="indefinite"/></rect><rect x="420" y="210" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="454" cy="246" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="454" y="252" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >↺</text>
+<text x="482" y="252" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Compensation</text>
+<text x="442" y="292" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >A failed payment automatically releases the</text><text x="442" y="312" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >reserved seats.</text>
+<rect x="442" y="346" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="6s" repeatCount="indefinite"/></rect><rect x="800" y="210" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="834" cy="246" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="834" y="252" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >▦</text>
+<text x="862" y="252" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Seat-map caching</text>
+<text x="822" y="292" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Served from Redis and evicted on every change.</text>
+<rect x="822" y="346" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="7s" repeatCount="indefinite"/></rect><rect x="40" y="380" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="74" cy="416" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="74" y="422" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >▲</text>
+<text x="102" y="422" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Rate limiting</text>
+<text x="62" y="462" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Distributed token bucket with Redis and Lua.</text>
+<rect x="62" y="516" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="8s" repeatCount="indefinite"/></rect><rect x="420" y="380" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="454" cy="416" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="454" y="422" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >☰</text>
+<text x="482" y="422" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Virtual waiting room</text>
+<text x="442" y="462" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >FIFO queue with admission tokens for hot</text><text x="442" y="482" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >events.</text>
+<rect x="442" y="516" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="9s" repeatCount="indefinite"/></rect><rect x="800" y="380" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="834" cy="416" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="834" y="422" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >◉</text>
+<text x="862" y="422" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Observability</text>
+<text x="822" y="462" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Prometheus metrics, Grafana dashboard, trace</text><text x="822" y="482" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >ids in logs.</text>
+<rect x="822" y="516" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="6s" repeatCount="indefinite"/></rect><rect x="40" y="550" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="74" cy="586" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="74" y="592" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >⚡</text>
+<text x="102" y="592" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Live seat map</text>
+<text x="62" y="632" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Server-Sent Events push seat changes to every</text><text x="62" y="652" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >viewer within a second.</text>
+<rect x="62" y="686" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="7s" repeatCount="indefinite"/></rect><rect x="420" y="550" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="454" cy="586" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="454" y="592" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >✉</text>
+<text x="482" y="592" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Email notifications</text>
+<text x="442" y="632" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Real confirmation, cancellation and expiry</text><text x="442" y="652" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >emails via Brevo.</text>
+<rect x="442" y="686" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="8s" repeatCount="indefinite"/></rect><rect x="800" y="550" width="360" height="150" rx="16" fill="#1E0B14" stroke="#5A2238"/>
+<circle cx="834" cy="586" r="17" fill="#0D0508" stroke="#E8B04B"/>
+<text x="834" y="592" class="sans" font-size="16" fill="#F6D58E" text-anchor="middle" >▶</text>
+<text x="862" y="592" class="serif" font-size="19" fill="#F4EDE4" text-anchor="start" >Public demo</text>
+<text x="822" y="632" class="sans" font-size="13" fill="#D9CBC0" text-anchor="start" >Hold, pay, cancel and race 50 buyers for 1</text><text x="822" y="652" class="sans" font-size="13" fill="#A8939A" text-anchor="start" >seat on the live site.</text>
+<rect x="822" y="686" width="34" height="2" rx="1" fill="#E8B04B"><animate attributeName="width" values="34;316;34" dur="9s" repeatCount="indefinite"/></rect>
+</svg>
