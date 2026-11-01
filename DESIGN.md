@@ -74,7 +74,7 @@ A seat can be in at most one *active* booking, enforced by PostgreSQL regardless
 
 ### Verifying it
 - `BookingConcurrencyTest` races 200 threads for one seat (and 200 overlapping multi-seat requests) under each strategy: exactly one winner, zero seats in two bookings.
-- `/api/events/{id}/stats` returns `doubleBookedSeats`, computed **from booking status, not from the `active` flag**, so it independently checks layer 3. The k6 load test fails if it's ever non-zero.
+- `/api/events/{id}/stats` returns `doubleBookedSeats`, a durable audit. A booking owns its seats from `created_at` until it is released (`updated_at` of a `CANCELLED`/`EXPIRED` booking; open-ended otherwise), and the audit counts seats where two bookings' ownership intervals overlap. It considers **every** booking ever made, including expired and cancelled ones, and doesn't rely on the `active` flag or the index it checks. A load test longer than the hold TTL therefore can't hide an overlap that has since expired. The k6 test fails if it's ever non-zero. (It compares timestamps written by the app, so instances with badly skewed clocks could produce a false positive, never a false negative of a real concurrent overlap within one instance.)
 
 ### Fast reject
 After a sell-out, nearly every request is doomed. Before taking any lock, SeatLock checks the (Redis-cached) seat map and rejects seats already shown as taken. This **can only reject**: a seat shown as available still goes through the locked check. In the load test it raised pessimistic throughput from 897 to 2,171 req/s.
@@ -88,7 +88,7 @@ After a sell-out, nearly every request is doomed. Before taking any lock, SeatLo
   `SELECT id FROM bookings WHERE status='HELD' AND expires_at < now() ORDER BY expires_at LIMIT 200 FOR UPDATE SKIP LOCKED`
   - **`SKIP LOCKED`** lets several app instances sweep in parallel without blocking each other or double-processing a booking.
   - A booking that is being paid right now holds its row lock, so the sweeper skips it.
-- Only `HELD` bookings expire. Once payment starts (`PAYMENT_PENDING`), the booking is no longer swept, so we never release seats that are about to be paid for.
+- Only `HELD` bookings expire. Once payment starts (`PAYMENT_PENDING`), the booking is no longer swept, so we never release seats that are about to be paid for. A payment that never gets a result is handled by the payment reconciler instead (§7), so `PAYMENT_PENDING` can't last forever.
 
 ---
 
@@ -127,7 +127,12 @@ notification module ──► one notification per booking event
 Messages are keyed by booking id, so all messages for a booking land on the same partition, in order.
 
 ### Poison messages
-3 retries, 1 s apart, then the message is parked on `<topic>-dlt` so it can't block its partition.
+3 retries, 1 s apart, then the message is parked on `<topic>-dlt` so it can't block its partition. The recoverer writes to the **same partition number** on the dead-letter topic, so every `-dlt` topic is declared with the same partition count as its source. An auto-created one would get the broker default (often 1), and records from partitions 1 and 2 could then not be parked.
+
+### Payments that never get a result: reconciliation
+If the provider is down for longer than the Kafka retries (a few seconds), the `PaymentRequested` message ends up on the dead-letter topic and the payment stays `PENDING`. Nothing else would ever finish it, and the booking would stay `PAYMENT_PENDING` with its seats locked forever. The **payment reconciler** runs every 30 s and handles payments still `PENDING` after `pending-timeout` (1 min):
+- It **re-drives** them: calls the gateway again with the payment's original idempotency key and token (stored on the payment), then records the result. Because the key is the same, a charge that already happened is returned by the provider, never repeated.
+- If the provider is still unreachable after `give-up-after` (15 min), it fails the payment. The saga then releases the seats, and the error log asks for a refund check in case the provider had charged after all.
 
 ### Why charge outside the DB transaction
 Holding row locks while waiting on a slow external provider would stall everything that touches that booking. The processor reads, calls the gateway with no transaction open, then writes the result in a short transaction.
@@ -147,6 +152,8 @@ Holding row locks while waiting on a slow external provider would stall everythi
 
 - A token bucket per user (`capacity` burst, `refill-per-second` sustained), applied to holds, payments and queue joins.
 - Implemented as **one Lua script**: read, refill, take and write happen atomically in Redis, so two concurrent requests can't both take the last token. It uses Redis's own clock (`TIME`), so app servers with skewed clocks agree.
+- **Two buckets per request:** per user (`X-User-Id`) and per client IP. `X-User-Id` isn't authenticated, so a client could invent a new one for every request; the IP bucket (larger, because users behind one NAT share an IP) caps that. Behind a reverse proxy, `server.forward-headers-strategy` must be set so the real client IP is used.
+- **Path matching uses the same normalisation as Spring MVC** (URL-decoding, stripping `;matrix` parameters). Otherwise `POST /api/bookings;v=1`, which Spring still routes to the booking controller, would skip the limiter.
 - Over the limit: `429` with `Retry-After`.
 - **Fails open:** if Redis is down we let requests through; locking and constraints still protect correctness.
 
@@ -157,6 +164,7 @@ Holding row locks while waiting on a slow external provider would stall everythi
 For events created with `queueEnabled: true`:
 - `POST /queue` adds the user to a FIFO sorted set (`ZADD NX`, so re-joining keeps your place).
 - Every second, an admission job runs a **Lua script** that drops expired admissions, computes free room (`maxActiveUsers − active`), pops the next users, marks them admitted and stores their tokens, **atomically**. Several instances can run the job without admitting anyone twice or overfilling the room.
+- The same script stops scheduling the event once nobody is waiting, in the same atomic step. `join()` always adds the user to the line before re-scheduling the event, so a user who joins at that exact moment can't end up in a line that is no longer being admitted from.
 - The booking endpoint requires `X-Queue-Token` to match the user's token.
 - **Effect:** at most `maxActiveUsers` people compete for seats at any moment, however many arrive.
 
@@ -188,9 +196,9 @@ For events created with `queueEnabled: true`:
 
 | Limitation | Why it's acceptable now | Next step |
 |---|---|---|
-| No authentication (`X-User-Id`) | Focus is concurrency and consistency | Spring Security + JWT |
-| A `PAYMENT_PENDING` booking has no timeout | The fake gateway always answers; Kafka retries until it does | Timeout + reconciliation job with the provider |
-| A payment success arriving after a booking was cancelled is only logged | Can't happen with the current flow (pending bookings aren't swept) | Emit `RefundRequired` and automate refunds |
+| No authentication (`X-User-Id`); the per-IP rate limit is the only cap on rotating identities | Focus is concurrency and consistency | Spring Security + JWT, then rate-limit by authenticated user |
+| A provider that charged but stayed unreachable past `give-up-after`, or a late success after cancellation, is only logged | Requires a 15-minute provider outage | Emit `RefundRequired` and automate refunds |
 | Seat map cached as one JSON blob | Fine for venues up to tens of thousands of seats | Per-section keys or a Redis hash per event |
 | Redis lock keys and queue Lua build keys dynamically | Single Redis node | Hash tags (`{eventId}`) for Redis Cluster |
-| Load test ran on one machine | Shows correctness and relative cost of strategies | Multi-instance run behind a load balancer |
+| Load test ran on one machine, from one IP, with rate limiting off | Shows correctness and relative cost of strategies | Multi-instance run behind a load balancer, distributed k6 |
+| Kafka in docker-compose has no authentication | Dev setup; ports are bound to `127.0.0.1` | SASL/TLS and ACLs so only the payment module can publish payment results |

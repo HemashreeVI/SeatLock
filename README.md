@@ -7,7 +7,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
 ![Redis](https://img.shields.io/badge/Redis-7-red)
 ![Kafka](https://img.shields.io/badge/Kafka-4.1-black)
-![Tests](https://img.shields.io/badge/tests-28%20passing-success)
+![Tests](https://img.shields.io/badge/tests-37%20passing-success)
 
 ---
 
@@ -103,7 +103,7 @@ git clone https://github.com/HemashreeVI/seatlock-.git
 cd seatlock-
 ```
 ```bash
-docker compose up -d          # PostgreSQL, Redis, Kafka
+docker compose up -d          # PostgreSQL, Redis, Kafka (ports bound to 127.0.0.1)
 ```
 ```bash
 ./mvnw spring-boot:run        # Windows: .\mvnw.cmd spring-boot:run
@@ -115,7 +115,7 @@ Or run **everything** in Docker, with no Java installed:
 docker compose --profile app up -d --build
 ```
 
-Prometheus + Grafana (dashboard at http://localhost:3000, Prometheus at http://localhost:9090):
+Prometheus + Grafana (dashboard at http://localhost:3000, anonymous view-only, log in as `admin` / `admin` to edit; Prometheus at http://localhost:9090):
 
 ```bash
 docker compose --profile observability up -d
@@ -157,46 +157,59 @@ Errors use the standard [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) probl
 
 ### Example (bash)
 
+The example uses [`jq`](https://jqlang.org/) to pick the ids out of each response, so it works even if your database already contains other events.
+
 ```bash
-# create an event with 2 sections
-curl -s -X POST localhost:8080/api/events -H 'Content-Type: application/json' -d '{
+# create an event with 2 sections and remember its id
+EVENT_ID=$(curl -s -X POST localhost:8080/api/events -H 'Content-Type: application/json' -d '{
   "name": "Coldplay Live", "venue": "DY Patil Stadium", "startsAt": "2027-01-20T19:00:00Z",
   "sections": [
     {"name": "VIP",     "rows": 2, "seatsPerRow": 5,  "priceCents": 500000},
     {"name": "GENERAL", "rows": 3, "seatsPerRow": 10, "priceCents": 150000}
-  ]}'
+  ]}' | jq -r .id)
 ```
 ```bash
-# hold seats 1 and 2 for 10 minutes
-curl -s -X POST localhost:8080/api/bookings -H 'Content-Type: application/json' \
-  -H 'X-User-Id: alice' -H 'Idempotency-Key: 6f1c2d' -d '{"eventId": 1, "seatIds": [1, 2]}'
+# the ids of the first two seats of that event
+SEATS=$(curl -s localhost:8080/api/events/$EVENT_ID/seats | jq -c '[.[0].id, .[1].id]')
+```
+```bash
+# hold them for 10 minutes and remember the booking id
+BOOKING_ID=$(curl -s -X POST localhost:8080/api/bookings -H 'Content-Type: application/json' \
+  -H 'X-User-Id: alice' -H 'Idempotency-Key: hold-1' \
+  -d "{\"eventId\": $EVENT_ID, \"seatIds\": $SEATS}" | jq -r .id)
 ```
 ```bash
 # pay ("tok_fail..." simulates a declined card)
-curl -s -X POST localhost:8080/api/bookings/1/payments -H 'Content-Type: application/json' \
-  -H 'X-User-Id: alice' -H 'Idempotency-Key: pay-6f1c2d' -d '{"paymentToken": "tok_visa"}'
+curl -s -X POST localhost:8080/api/bookings/$BOOKING_ID/payments -H 'Content-Type: application/json' \
+  -H 'X-User-Id: alice' -H 'Idempotency-Key: pay-1' -d '{"paymentToken": "tok_visa"}'
 ```
 ```bash
-curl -s localhost:8080/api/bookings/1 -H 'X-User-Id: alice'
+# a moment later: CONFIRMED, seats BOOKED
+curl -s localhost:8080/api/bookings/$BOOKING_ID -H 'X-User-Id: alice'
 ```
 
 ---
 
 ## 📊 Load Test Results
 
-[`load-test/booking-rush.js`](./load-test/booking-rush.js): **500 concurrent users** hammering **100 seats** for **30 s** with no think time, each requesting 1–2 seats biased towards the front rows. At the end the script calls `/stats` and fails if any seat is in more than one live booking.
+[`load-test/booking-rush.js`](./load-test/booking-rush.js): **500 concurrent users** hammering **100 seats** for **30 s** with no think time. Each user requests 1–2 seats, biased towards the front rows. The test exercises the **hold** path; it doesn't pay. At the end it calls `/stats`, whose audit counts every seat that was *ever* owned by two bookings at overlapping times, including bookings that later expired or were cancelled. The run fails if that count isn't 0, or if nobody managed to hold a seat at all.
 
+All load-test traffic comes from one IP, so to measure the booking path itself the app is started with rate limiting off:
+
+```bash
+java -Dseatlock.rate-limit.enabled=false -jar target/seatlock-0.0.1-SNAPSHOT.jar
+```
 ```bash
 k6 run -e VUS=500 -e SEATS=100 -e DURATION=30s load-test/booking-rush.js
 ```
 
-| Locking strategy | Hold requests | Throughput | p50 | p95 | p99 | Seats sold | **Double-bookings** |
+| Locking strategy | Hold requests | Throughput | p50 | p95 | p99 | Seats held | **Double-bookings** |
 |---|---|---|---|---|---|---|---|
-| Pessimistic (`FOR UPDATE`) | 66,225 | 2,171 req/s | 195 ms | 417 ms | 728 ms | 100 / 100 | **0** |
-| Optimistic (`@Version`) | 65,185 | 2,153 req/s | 200 ms | 412 ms | 728 ms | 100 / 100 | **0** |
-| Redis distributed lock | 70,480 | 2,330 req/s | 187 ms | 370 ms | 541 ms | 100 / 100 | **0** |
+| Pessimistic (`FOR UPDATE`) | 72,828 | 2,411 req/s | 171 ms | 448 ms | 694 ms | 100 / 100 | **0** |
+| Optimistic (`@Version`) | 65,028 | 2,148 req/s | 187 ms | 473 ms | 760 ms | 100 / 100 | **0** |
+| Redis distributed lock | 75,330 | 2,491 req/s | 166 ms | 418 ms | 629 ms | 100 / 100 | **0** |
 
-Effect of the fast-reject pre-check (requests for seats the cached seat map already shows as taken get a 409 without touching the database), same test:
+Effect of the fast-reject pre-check (requests for seats the cached seat map already shows as taken get a 409 without touching the database), measured in an earlier round of the same test:
 
 | Strategy | Without fast-reject | With fast-reject |
 |---|---|---|
@@ -204,7 +217,9 @@ Effect of the fast-reject pre-check (requests for seats the cached seat map alre
 | Optimistic | 1,077 req/s, p95 1.05 s | 2,153 req/s, p95 412 ms |
 | Redis lock | 1,954 req/s, p95 498 ms | 2,330 req/s, p95 370 ms |
 
-> Measured on a single 4-vCPU / 15 GB machine running k6, the app, PostgreSQL, Redis and Kafka **together**, so the absolute numbers are bounded by that box. Each run used a fresh JVM after a 15 s warm-up. With 500 users and zero think time, most of the latency is queueing; at 100 users (pessimistic, without fast-reject) the p95 was 173 ms. The point of the test is the last column: across more than 300,000 contended hold attempts in these runs, **no seat was ever sold twice**.
+**With rate limiting on** (default settings, pessimistic): the single-IP flood of 260,459 requests got `429` for 99.4% of them. Those were answered from Redis in p95 95 ms, and the 100 seats were still all held with 0 double-bookings.
+
+> Measured on a single 4-vCPU / 15 GB machine running k6, the app, PostgreSQL, Redis and Kafka **together**, so the absolute numbers are bounded by that box. Each run used a fresh JVM after a 15 s warm-up. With 500 users and zero think time, most of the latency is queueing; at 100 users (pessimistic, without fast-reject) the p95 was 173 ms. The point of the test is the last column: across more than 500,000 contended hold attempts in these runs, **no seat was ever held by two bookings at the same time**.
 
 The concurrency tests in [`BookingConcurrencyTest`](./src/test/java/com/HemashreeVI/seatlock/booking/BookingConcurrencyTest.java) check the same guarantee on every build: 200 threads racing for one seat give exactly one winner under each strategy, and 200 overlapping multi-seat requests never put a seat in two bookings.
 
