@@ -1,15 +1,12 @@
 package com.HemashreeVI.seatlock.booking;
 
 import com.HemashreeVI.seatlock.event.Event;
-import com.HemashreeVI.seatlock.seat.Seat;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
-import java.util.HashSet;
-import java.util.Set;
 
 @Entity
 @Table(name = "bookings")
@@ -36,19 +33,33 @@ public class Booking {
     @Column(nullable = false)
     private Long totalCents;
 
+    /** When a HELD booking is automatically released. */
+    @Column(nullable = false)
+    private Instant expiresAt;
+
+    private String idempotencyKey;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
-    @ManyToMany
-    @JoinTable(
-            name = "booking_seats",
-            joinColumns = @JoinColumn(name = "booking_id"),
-            inverseJoinColumns = @JoinColumn(name = "seat_id")
-    )
-    private Set<Seat> seats = new HashSet<>();
+    @Column(nullable = false)
+    private Instant updatedAt;
+
+    @Version
+    private Long version;
 
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();
+        this.updatedAt = this.createdAt;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        this.updatedAt = Instant.now();
+    }
+
+    public boolean isOwnedBy(String user) {
+        return userId.equals(user);
     }
 }
