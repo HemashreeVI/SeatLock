@@ -69,6 +69,11 @@ public class PaymentService {
                 return previous(idempotencyKey, hash).orElseThrow(() -> e);
             }
             throw e;
+        } catch (ConflictException e) {
+            // A concurrent copy of THIS request (double click, overlapping retry) waited on the
+            // booking row lock behind the original and now sees PAYMENT_PENDING. If the original
+            // recorded a payment under the same key, answer with it instead of a 409.
+            return previous(idempotencyKey, hash).orElseThrow(() -> e);
         }
     }
 
@@ -108,6 +113,7 @@ public class PaymentService {
         payment.setIdempotencyKey(key);
         payment.setRequestHash(hash);
         payment.setAmountCents(booking.getTotalCents());
+        payment.setPaymentToken(request.paymentToken());
         payment.setStatus(PaymentStatus.PENDING);
         paymentRepository.saveAndFlush(payment);
 

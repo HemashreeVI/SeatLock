@@ -68,6 +68,9 @@ seatlock:
     redis-lock-ttl: 5s
   payment:
     fake-latency-ms: 0
+    pending-timeout: 1m               # re-drive a payment that has no result after this long
+    give-up-after: 15m                # provider still unreachable -> fail it, release the seats
+    reconcile-interval-ms: 30000
   outbox:
     relay-interval-ms: 200
   cache:
@@ -76,6 +79,8 @@ seatlock:
     enabled: true
     capacity: 20                      # burst size per user
     refill-per-second: 5              # sustained requests per second per user
+    ip-capacity: 200                  # per-client-IP burst (X-User-Id isn't authenticated)
+    ip-refill-per-second: 50
   queue:
     max-active-users: 100             # shoppers allowed in at once per hot event
     admit-batch-size: 50              # admitted per tick

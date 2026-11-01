@@ -10,6 +10,9 @@ public final class Topics {
     /** booking lifecycle facts (confirmed, cancelled, expired) for anyone interested. */
     public static final String BOOKING_EVENTS = "seatlock.bookings.events";
 
+    /** Spring Kafka's default dead-letter topic suffix. */
+    public static final String DLT_SUFFIX = "-dlt";
+
     private Topics() {
     }
 }

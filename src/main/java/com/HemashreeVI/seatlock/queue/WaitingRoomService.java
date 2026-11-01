@@ -44,25 +44,31 @@ public class WaitingRoomService {
      */
     @SuppressWarnings("rawtypes")
     private static final RedisScript<List> ADMIT = new DefaultRedisScript<>("""
-            local waiting, admitted, tokenPrefix = KEYS[1], KEYS[2], KEYS[3]
+            local waiting, admitted, tokenPrefix, events = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
+            local eventId = ARGV[5]
             local now = tonumber(ARGV[1])
             local maxActive = tonumber(ARGV[2])
             local batch = tonumber(ARGV[3])
             local ttlMs = tonumber(ARGV[4])
 
             redis.call('ZREMRANGEBYSCORE', admitted, '-inf', now)
-            local room = math.min(maxActive - redis.call('ZCARD', admitted), batch)
-            if room <= 0 then return {} end
-
-            local popped = redis.call('ZPOPMIN', waiting, room)
             local users = {}
-            local tokenIndex = 5
-            for i = 1, #popped, 2 do
-                local user = popped[i]
-                redis.call('ZADD', admitted, now + ttlMs, user)
-                redis.call('SET', tokenPrefix .. user, ARGV[tokenIndex], 'PX', ttlMs)
-                tokenIndex = tokenIndex + 1
-                table.insert(users, user)
+            local room = math.min(maxActive - redis.call('ZCARD', admitted), batch)
+            if room > 0 then
+                local popped = redis.call('ZPOPMIN', waiting, room)
+                local tokenIndex = 6
+                for i = 1, #popped, 2 do
+                    local user = popped[i]
+                    redis.call('ZADD', admitted, now + ttlMs, user)
+                    redis.call('SET', tokenPrefix .. user, ARGV[tokenIndex], 'PX', ttlMs)
+                    tokenIndex = tokenIndex + 1
+                    table.insert(users, user)
+                end
+            end
+            -- stop scheduling this event once nobody is waiting. Done here, atomically: join()
+            -- always ZADDs before SADDing, so a concurrent join can't be left unscheduled.
+            if redis.call('ZCARD', waiting) == 0 then
+                redis.call('SREM', events, eventId)
             end
             return users
             """, List.class);
@@ -134,19 +140,16 @@ public class WaitingRoomService {
     public List<String> admit(Long eventId, int maxActive, int batch) {
         Duration ttl = properties.admissionTtl();
         List<String> args = new ArrayList<>(List.of(String.valueOf(System.currentTimeMillis()),
-                String.valueOf(maxActive), String.valueOf(batch), String.valueOf(ttl.toMillis())));
+                String.valueOf(maxActive), String.valueOf(batch), String.valueOf(ttl.toMillis()),
+                String.valueOf(eventId)));
         for (int i = 0; i < batch; i++) {
             args.add(UUID.randomUUID().toString());
         }
         @SuppressWarnings("unchecked")
         List<String> admitted = redis.execute(ADMIT,
-                List.of(waitingKey(eventId), admittedKey(eventId), tokenKey(eventId, "")), args.toArray());
-        Long stillWaiting = redis.opsForZSet().zCard(waitingKey(eventId));
-        if (stillWaiting == null || stillWaiting == 0) {
-            redis.opsForSet().remove(EVENTS_KEY, String.valueOf(eventId));
-        }
+                List.of(waitingKey(eventId), admittedKey(eventId), tokenKey(eventId, ""), EVENTS_KEY), args.toArray());
         if (admitted != null && !admitted.isEmpty()) {
-            log.info("Waiting room for event {}: admitted {} user(s), {} still waiting", eventId, admitted.size(), stillWaiting);
+            log.info("Waiting room for event {}: admitted {} user(s)", eventId, admitted.size());
         }
         return admitted == null ? List.of() : admitted;
     }

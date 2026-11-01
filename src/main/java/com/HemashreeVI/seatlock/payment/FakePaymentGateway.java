@@ -1,7 +1,7 @@
 package com.HemashreeVI.seatlock.payment;
 
+import com.HemashreeVI.seatlock.config.PaymentProperties;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -12,6 +12,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Simulated provider. Token "tok_fail" (or anything starting with "tok_fail") is declined;
  * every other token succeeds. Like a real provider, it remembers idempotency keys and returns
  * the original result for a repeated key instead of charging again.
+ * <p>
+ * {@link #setOutage(boolean)} simulates the provider being unreachable (calls throw), which is
+ * what the payment reconciliation job exists for.
  */
 @Slf4j
 @Component
@@ -19,13 +22,21 @@ public class FakePaymentGateway implements PaymentGateway {
 
     private final Map<String, ChargeResult> processed = new ConcurrentHashMap<>();
     private final long latencyMs;
+    private volatile boolean outage;
 
-    public FakePaymentGateway(@Value("${seatlock.payment.fake-latency-ms:0}") long latencyMs) {
-        this.latencyMs = latencyMs;
+    public FakePaymentGateway(PaymentProperties properties) {
+        this.latencyMs = properties.fakeLatencyMs();
+    }
+
+    public void setOutage(boolean outage) {
+        this.outage = outage;
     }
 
     @Override
     public ChargeResult charge(String idempotencyKey, long amountCents, String paymentToken) {
+        if (outage) {
+            throw new IllegalStateException("Payment provider unavailable");
+        }
         return processed.computeIfAbsent(idempotencyKey, key -> {
             simulateLatency();
             if (paymentToken != null && paymentToken.startsWith("tok_fail")) {

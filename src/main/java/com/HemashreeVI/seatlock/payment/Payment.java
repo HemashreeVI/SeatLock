@@ -36,6 +36,9 @@ public class Payment {
     @Column(nullable = false)
     private PaymentStatus status;
 
+    /** Provider checkout token; lets the reconciliation job re-drive a stuck payment. */
+    private String paymentToken;
+
     private String providerRef;
 
     private String failureReason;
