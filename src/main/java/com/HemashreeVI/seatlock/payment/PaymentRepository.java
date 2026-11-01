@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
@@ -17,4 +19,6 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Optional<Payment> findByIdForUpdate(@Param("id") Long id);
 
     long countByBookingId(Long bookingId);
+
+    List<Payment> findTop100ByStatusAndCreatedAtBeforeOrderByCreatedAt(PaymentStatus status, Instant before);
 }

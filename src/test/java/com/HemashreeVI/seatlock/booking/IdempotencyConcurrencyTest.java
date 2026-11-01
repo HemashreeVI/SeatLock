@@ -1,6 +1,7 @@
 package com.HemashreeVI.seatlock.booking;
 
 import com.HemashreeVI.seatlock.support.IntegrationTest;
+import com.HemashreeVI.seatlock.support.Race;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,7 +26,7 @@ class IdempotencyConcurrencyTest extends IntegrationTest {
         List<Long> seats = seatIds(eventId).subList(0, 2);
         Set<Long> bookingIds = ConcurrentHashMap.newKeySet();
 
-        BookingConcurrencyTest.Outcome outcome = BookingConcurrencyTest.race(30, i ->
+        Race.Outcome outcome = Race.race(30, i ->
                 bookingIds.add(bookingService.hold("carol", new HoldRequest(eventId, seats), "double-click").booking().id()));
 
         assertThat(outcome.unexpected()).isEmpty();

@@ -3,6 +3,7 @@ package com.HemashreeVI.seatlock.queue;
 import com.HemashreeVI.seatlock.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.JsonNode;
 
@@ -17,6 +18,9 @@ class WaitingRoomTest extends IntegrationTest {
 
     @Autowired
     WaitingRoomService waitingRoom;
+
+    @Autowired
+    StringRedisTemplate redis;
 
     @Test
     void hotEventRequiresAdmissionAndAdmitsInFifoOrder() {
@@ -49,6 +53,21 @@ class WaitingRoomTest extends IntegrationTest {
         assertThat(hold("u1", eventId, seats.subList(0, 1), token).getStatusCode().value()).isEqualTo(201);
         // someone else's token doesn't work
         assertThat(hold("u3", eventId, seats.subList(1, 2), token).getStatusCode().value()).isEqualTo(403);
+    }
+
+    @Test
+    void eventIsScheduledWhileSomeoneWaitsAndUnscheduledWhenTheLineIsEmpty() {
+        long eventId = createHotEvent();
+        post("/api/events/" + eventId + "/queue", null, "w1", Map.of());
+        assertThat(redis.opsForSet().isMember("seatlock:queue:events", String.valueOf(eventId))).isTrue();
+
+        waitingRoom.admit(eventId, 10, 10);   // line drained
+        assertThat(redis.opsForSet().isMember("seatlock:queue:events", String.valueOf(eventId))).isFalse();
+
+        post("/api/events/" + eventId + "/queue", null, "w2", Map.of());   // a new arrival re-schedules it
+        assertThat(redis.opsForSet().isMember("seatlock:queue:events", String.valueOf(eventId))).isTrue();
+        waitingRoom.admitAll();
+        assertThat(queue("w2").get("state").asString()).isEqualTo("ADMITTED");
     }
 
     @Test

@@ -32,18 +32,24 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Long> lockExpiredHeldIds(@Param("now") Instant now, @Param("limit") int limit);
 
     /**
-     * Independent integrity check used by tests and the stats endpoint: seats of an event that
-     * appear in more than one live (held/confirmed) booking. Must always be 0.
+     * Independent, durable integrity audit used by tests, the stats endpoint and the load test:
+     * the number of seats of an event that were EVER owned by two bookings at the same time.
+     * <p>
+     * Every booking that ever contained the seat is considered, including cancelled and expired
+     * ones. A booking owns its seats from created_at until it ends: updated_at for a booking in a
+     * final released state (CANCELLED / EXPIRED, never updated afterwards), open-ended otherwise.
+     * Two ownership intervals of the same seat must never overlap. It doesn't rely on the
+     * "active" flag or the unique index it is meant to verify. Must always be 0.
      */
     @Query(value = """
-            SELECT count(*) FROM (
-                SELECT bs.seat_id
-                FROM booking_seats bs
-                JOIN bookings b ON b.id = bs.booking_id
-                WHERE b.event_id = :eventId AND b.status NOT IN ('CANCELLED', 'EXPIRED')
-                GROUP BY bs.seat_id
-                HAVING count(*) > 1
-            ) doubles
+            SELECT count(DISTINCT a.seat_id)
+            FROM booking_seats a
+            JOIN booking_seats b ON b.seat_id = a.seat_id AND b.booking_id > a.booking_id
+            JOIN bookings ba ON ba.id = a.booking_id
+            JOIN bookings bb ON bb.id = b.booking_id
+            WHERE ba.event_id = :eventId
+              AND ba.created_at < CASE WHEN bb.status IN ('CANCELLED', 'EXPIRED') THEN bb.updated_at ELSE 'infinity'::timestamptz END
+              AND bb.created_at < CASE WHEN ba.status IN ('CANCELLED', 'EXPIRED') THEN ba.updated_at ELSE 'infinity'::timestamptz END
             """, nativeQuery = true)
     long countDoubleBookedSeats(@Param("eventId") Long eventId);
 }
