@@ -30,3 +30,8 @@ services:
         value: "6379"
       - key: REDIS_SSL
         value: "true"
+      # --- Email via Brevo (optional): leave empty and emails are only logged ---
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM          # a sender address verified in Brevo
+        sync: false

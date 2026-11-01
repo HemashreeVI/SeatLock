@@ -4,7 +4,11 @@ import com.HemashreeVI.seatlock.messaging.Messages;
 import com.HemashreeVI.seatlock.messaging.MessageHandler;
 import com.HemashreeVI.seatlock.messaging.ProcessedMessages;
 import com.HemashreeVI.seatlock.messaging.Topics;
+import com.HemashreeVI.seatlock.config.EmailProperties;
+import com.HemashreeVI.seatlock.notification.email.BookingEmails;
+import com.HemashreeVI.seatlock.notification.email.EmailDispatcher;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Header;
@@ -13,9 +17,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Duration;
+import java.time.Instant;
+
 /**
- * Sends the user a message whenever their booking is confirmed, cancelled or expires.
- * Uses the inbox table so a redelivered Kafka message never sends a second email.
+ * Sends the user a message whenever their booking is confirmed, cancelled or expires: an in-app
+ * notification, plus an email when the customer gave an address.
+ * Uses the inbox table so a redelivered message never notifies (or emails) twice.
  */
 @Slf4j
 @Component
@@ -27,6 +35,9 @@ public class NotificationListener implements MessageHandler {
     private final NotificationRepository repository;
     private final ProcessedMessages processedMessages;
     private final JsonMapper json;
+    private final BookingEmails emails;
+    private final EmailProperties emailProperties;
+    private final ApplicationEventPublisher events;
 
     @Override
     public String topic() {
@@ -54,7 +65,18 @@ public class NotificationListener implements MessageHandler {
         notification.setUserId(event.userId());
         notification.setType(event.type());
         notification.setMessage(message);
+        String to = event.customerEmail();
+        if (to != null) {
+            notification.setEmailTo(to);
+            boolean underCap = repository.countByEmailToAndCreatedAtAfter(to, Instant.now().minus(Duration.ofDays(1)))
+                    < emailProperties.maxPerRecipientPerDay();
+            notification.setEmailStatus(underCap ? EmailStatus.PENDING : EmailStatus.SKIPPED);
+        }
         repository.save(notification);
+        if (notification.getEmailStatus() == EmailStatus.PENDING) {
+            // sent after this transaction commits (see EmailDispatcher)
+            events.publishEvent(new EmailDispatcher.EmailRequested(notification.getId(), emails.build(event)));
+        }
         log.info("Notification to {}: {}", event.userId(), message);
     }
 }

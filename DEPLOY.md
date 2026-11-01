@@ -106,6 +106,30 @@ Try the race button. It should say **1 winner · 49 got 409 Conflict**.
 
 ---
 
+## Optional: real email notifications (Brevo, free)
+
+Customers who enter an email address get real emails when their booking is **confirmed**, **cancelled** (including a declined payment) or **expires**. Without this step the app still works, but it only writes those emails to the log, and the page says so.
+
+1. Go to **https://www.brevo.com** → **Sign up free**, and confirm your email address.
+   If Brevo asks you to complete your profile or activate the account for sending, do it; it's free.
+2. **Sender address:** top-right menu → **Senders, Domains & Dedicated IPs** → **Senders**. The address you signed up with is usually already listed as verified. If not, **Add a sender** and click the link Brevo emails you.
+3. **API key:** top-right menu → **SMTP & API** → **API Keys** tab → **Generate a new API key** → name it `seatlock` → copy the key (it starts with `xkeysib-`). Brevo shows it only once.
+4. In Render: your **seatlock** service → **Environment** → **Edit** → add:
+
+   | Key | Value |
+   |---|---|
+   | `BREVO_API_KEY` | the key from step 3 |
+   | `EMAIL_FROM` | the verified sender address from step 2 |
+   | `EMAIL_FROM_NAME` | *(optional)* sender name, default `SeatLock` |
+
+   → **Save Changes** (Render redeploys).
+5. Test it: open your demo, type your email under the seat map, hold a seat and pay. The notification on the page should say **📧 emailed to …** and the email should arrive within a minute. Check the spam folder the first time.
+
+Limits and safety:
+- Brevo's free plan sends **300 emails per day**.
+- SeatLock itself sends at most **10 emails per address per day**, so the public demo can't be used to flood someone's inbox (further ones show as *skipped*).
+- The link in the emails points to your Render URL automatically.
+
 ## How the free demo behaves
 
 - **First visit after a quiet period is slow.** After 15 minutes without visitors Render stops the app. The next visitor waits about **1.5–2 minutes** while it starts; Render shows a "waking up" screen and the demo page keeps retrying. After that it's quick.
@@ -129,6 +153,7 @@ Try the race button. It should say **1 winner · 49 got 409 Conflict**.
 | `Connection to … refused`, `UnknownHostException` | `DB_URL` wrong | It must start with `jdbc:postgresql://` and contain host **and** database name (`…neon.tech/neondb?sslmode=require`) |
 | `password authentication failed` | `DB_USER` / `DB_PASSWORD` swapped or incomplete | Copy them again from Neon's connection string |
 | Flyway error mentioning `prepared statement` or `pooler` | You used Neon's *pooled* host (contains `-pooler`) | Use the direct connection (pooling OFF) |
+| Notifications say `email … failed` | Brevo rejected the email: wrong `BREVO_API_KEY`, or `EMAIL_FROM` isn't a verified sender | Check both in Brevo; the Render logs show Brevo's error message |
 | Health shows `redis: DOWN`, or `NOAUTH`, or Redis timeouts | Redis host or password wrong, or TLS off | `REDIS_HOST` = host only (no `https://`, no port), `REDIS_PASSWORD` = Upstash password, `REDIS_SSL` = `true` |
 | `OutOfMemoryError` or the service restarts in a loop | Memory pressure on 512 MB | The image already uses small-memory JVM flags; make sure you didn't set a different `JAVA_OPTS` |
 | Deploy fails while building | Usually a temporary network error downloading Maven dependencies | **Manual Deploy → Clear build cache & deploy** |

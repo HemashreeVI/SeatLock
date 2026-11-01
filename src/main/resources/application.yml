@@ -81,6 +81,17 @@ seatlock:
     reconcile-interval-ms: 30000
   outbox:
     relay-interval-ms: 200
+  email:
+    brevo-api-key: ${BREVO_API_KEY:}  # empty = emails are only logged
+    from-email: ${EMAIL_FROM:}        # a sender address verified in Brevo
+    from-name: ${EMAIL_FROM_NAME:SeatLock}
+    public-url: ${PUBLIC_URL:${RENDER_EXTERNAL_URL:http://localhost:8080}}
+    currency: INR
+    max-per-recipient-per-day: 10
+  live:
+    flush-interval-ms: 300            # how often seat changes are pushed to live viewers
+    heartbeat-interval-ms: 20000
+    max-subscribers: 1000
   cache:
     seat-map-ttl: 5s                  # safety-net TTL; entries are also evicted on every change
   rate-limit:

@@ -41,6 +41,11 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.FORBIDDEN, "Waiting room admission required", ex.getMessage());
     }
 
+    @ExceptionHandler(com.HemashreeVI.seatlock.seat.SeatLiveUpdates.TooManySubscribersException.class)
+    public ProblemDetail handleTooManyViewers(RuntimeException ex) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "Too many live viewers", ex.getMessage());
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail handleConflict(DataIntegrityViolationException ex) {
         return problem(HttpStatus.CONFLICT, "Conflict",

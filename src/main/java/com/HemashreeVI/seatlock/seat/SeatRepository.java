@@ -13,6 +13,10 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
 
     List<Seat> findByEventIdOrderBySectionAscRowLabelAscSeatNumberAsc(Long eventId);
 
+    /** Just id + status for every seat of an event (the live-update payload). */
+    @Query("select new com.HemashreeVI.seatlock.seat.SeatStatusUpdate(s.id, s.status) from Seat s where s.event.id = :eventId order by s.id")
+    List<SeatStatusUpdate> findStatuses(@Param("eventId") Long eventId);
+
     List<Seat> findByEventIdAndStatus(Long eventId, SeatStatus status);
 
     /** Plain read, ordered by id. */

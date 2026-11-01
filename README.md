@@ -7,7 +7,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
 ![Redis](https://img.shields.io/badge/Redis-7-red)
 ![Kafka](https://img.shields.io/badge/Kafka-4.1-black)
-![Tests](https://img.shields.io/badge/tests-41%20passing-success)
+![Tests](https://img.shields.io/badge/tests-48%20passing-success)
 
 ---
 
@@ -25,12 +25,12 @@ When a popular event goes on sale, thousands of users try to book the same limit
 
 ## 🌐 Live demo
 
-Open `/` on a running instance for an interactive demo: a seat map where you can hold, pay and cancel, see notifications and the live double-booking audit, and a **"50 buyers, 1 seat" race** button.
+Open `/` on a running instance for an interactive demo: a **live** seat map (seats turn amber/red on every open screen within a second, pushed by the server), hold / pay / cancel, **email confirmations**, the live double-booking audit, and a **"50 buyers, 1 seat" race** button.
 
 - **Deploy your own free public demo** (Render + Neon + Upstash, no credit card): see [`DEPLOY.md`](./DEPLOY.md).
 - **Run it locally:** start the app (see *Getting Started*) and open http://localhost:8080/.
 
-<!-- Once deployed, replace this line with: **Live:** https://seatlock-xxxx.onrender.com (the free server sleeps when idle; the first visit takes ~2 min to wake it) -->
+**Live:** https://seatlock-7ba6.onrender.com (free server: it sleeps when idle, so the first visit can take about 2 minutes to wake it up)
 
 ---
 
@@ -48,6 +48,8 @@ Open `/` on a running instance for an interactive demo: a seat map where you can
 | Rate limiting | Distributed token-bucket limiter (Redis + Lua) | ✅ Done |
 | Virtual waiting queue | FIFO waiting room with admission tokens for hot events | ✅ Done |
 | Observability | Prometheus metrics, Grafana dashboard, trace ids in logs | ✅ Done |
+| Live seat map | Server-Sent Events push seat changes to every viewer within a second | ✅ Done |
+| Email notifications | Real confirmation / cancellation / expiry emails via Brevo (free tier) | ✅ Done |
 
 ---
 
@@ -166,9 +168,10 @@ All tests start their own Postgres, Redis and Kafka containers (Docker must be r
 | `POST` | `/api/events` | Create an event; seats are generated from `sections` (`queueEnabled: true` for a waiting room) |
 | `GET` | `/api/events` · `/api/events/{id}` | List / get events |
 | `GET` | `/api/events/{id}/seats?status=AVAILABLE` | Seat map (cached, `X-Cache: HIT/MISS`) |
+| `GET` | `/api/events/{id}/seats/stream` | Live seat statuses (Server-Sent Events) |
 | `GET` | `/api/events/{id}/stats` | Seats and bookings by status, **double-booked seat count** |
 | `POST` | `/api/events/{id}/queue` · `GET` same | Join the waiting room / poll position and admission token |
-| `POST` | `/api/bookings` | Hold seats (headers: `X-User-Id`, optional `Idempotency-Key`, `X-Queue-Token` for hot events) |
+| `POST` | `/api/bookings` | Hold seats; optional `name` and `email` for notification emails (headers: `X-User-Id`, optional `Idempotency-Key`, `X-Queue-Token` for hot events) |
 | `GET` | `/api/bookings/{id}` | Booking status |
 | `DELETE` | `/api/bookings/{id}` | Cancel a hold, release the seats |
 | `POST` | `/api/bookings/{id}/payments` | Pay (requires `Idempotency-Key`); `202 Accepted` |
