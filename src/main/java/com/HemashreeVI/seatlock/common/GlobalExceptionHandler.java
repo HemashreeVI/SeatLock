@@ -24,6 +24,18 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.BAD_REQUEST, "Bad request", ex.getMessage());
     }
 
+    @ExceptionHandler(ConflictException.class)
+    public ProblemDetail handleDomainConflict(ConflictException ex) {
+        ProblemDetail pd = problem(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
+        ex.getProperties().forEach(pd::setProperty);
+        return pd;
+    }
+
+    @ExceptionHandler(UnprocessableException.class)
+    public ProblemDetail handleUnprocessable(UnprocessableException ex) {
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Unprocessable request", ex.getMessage());
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail handleConflict(DataIntegrityViolationException ex) {
         return problem(HttpStatus.CONFLICT, "Conflict",

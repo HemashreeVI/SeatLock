@@ -23,3 +23,18 @@ management:
   endpoint:
     health:
       show-details: always
+
+seatlock:
+  booking:
+    hold-ttl: 10m                     # seats stay reserved this long before auto-release
+    max-seats-per-booking: 10
+    expiry-sweep-interval-ms: 5000
+    expiry-sweep-batch-size: 200
+  locking:
+    # OPTIMISTIC  -> @Version check, losers fail at commit
+    # PESSIMISTIC -> SELECT ... FOR UPDATE, losers wait then fail
+    # REDIS       -> distributed lock per seat, losers fail fast without touching the DB
+    strategy: ${LOCKING_STRATEGY:PESSIMISTIC}
+    redis-lock-ttl: 5s
+  payment:
+    fake-latency-ms: 0
