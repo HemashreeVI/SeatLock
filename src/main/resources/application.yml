@@ -1,12 +1,18 @@
 spring:
   application:
     name: seatlock
+  data:
+    redis:
+      repositories:
+        enabled: false
   datasource:
     url: jdbc:postgresql://localhost:5432/seatlock
     username: seatlock
     password: seatlock
   jpa:
     open-in-view: false
+    hibernate:
+      ddl-auto: validate
 
 management:
   endpoint:
