@@ -34,6 +34,10 @@ public class Event {
     @Column(nullable = false)
     private boolean queueEnabled;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private EventCategory category = EventCategory.OTHER;
+
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();

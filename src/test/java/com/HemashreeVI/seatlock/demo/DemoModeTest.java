@@ -40,9 +40,16 @@ class DemoModeTest extends IntegrationTest {
     }
 
     @Test
-    void seedsAnUpcomingEventForVisitors() {
-        JsonNode events = get("/api/events", null).getBody();
-        assertThat(events.valueStream().anyMatch(e -> e.get("name").asString().contains("Demo Night"))).isTrue();
+    void seedsAnUpcomingLineUpWithPricesAndSeatsLeft() {
+        List<JsonNode> events = get("/api/events", null).getBody().valueStream().toList();
+        for (String name : List.of("Neon Nights: Indie Music Festival", "The Laugh Riot: Stand-up Special",
+                "City Derby: Football Finals", "Romeo & Juliet: A Modern Retelling", "Symphony Under the Stars")) {
+            JsonNode event = events.stream().filter(e -> e.get("name").asString().equals(name)).findFirst().orElseThrow();
+            assertThat(event.get("category").asString()).isNotEqualTo("OTHER");
+            assertThat(event.get("availableSeats").asLong()).isPositive();
+            assertThat(event.get("minPriceCents").asLong()).isPositive();
+            assertThat(event.get("totalSeats").asLong()).isGreaterThanOrEqualTo(event.get("availableSeats").asLong());
+        }
     }
 
     @Test

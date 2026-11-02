@@ -22,7 +22,9 @@
 
 ## 🌐 Live demo
 
-Open `/` on a running instance for an interactive demo: **sign up / log in**, a **live** seat map (seats turn amber/red on every open screen within a second, pushed by the server), hold / pay / cancel, **e-tickets with QR codes**, an organizer **check-in scanner** at `/checkin.html`, **email confirmations**, the live double-booking audit, and a **"50 buyers, 1 seat" race** button.
+The web app is a complete booking site: **log in / sign up** → **browse events** (search and categories) → **pick seats on a live seat map** → **checkout** with a 10-minute hold timer (test-mode payment) → **e-tickets with QR codes** under *My bookings* → organizer **check-in scanner**. Pages: `/login.html`, `/` (events), `/event.html`, `/checkout.html`, `/bookings.html`, `/checkin.html`, and the engineering showcase at `/demo.html`.
+
+The engineering showcase (`/demo.html`) has: **sign up / log in**, a **live** seat map (seats turn amber/red on every open screen within a second, pushed by the server), hold / pay / cancel, **e-tickets with QR codes**, an organizer **check-in scanner** at `/checkin.html`, **email confirmations**, the live double-booking audit, and a **"50 buyers, 1 seat" race** button.
 
 - **Deploy your own free public demo** (Render + Neon + Upstash, no credit card): see [`DEPLOY.md`](./DEPLOY.md).
 - **Run it locally:** start the app (see *Getting Started*) and open http://localhost:8080/.
@@ -163,7 +165,7 @@ src/main/java/com/HemashreeVI/seatlock/
 ├── observability/  business metrics
 ├── config/         typed configuration, Kafka, scheduling
 └── common/         errors -> problem-details JSON
-src/main/resources/static/          demo page (index.html), check-in scanner (checkin.html)
+src/main/resources/static/          web app: login, events, event (seat map), checkout, bookings, check-in; demo.html; assets/ (shared CSS/JS)
 src/main/resources/db/migration/   Flyway V1..V7
 load-test/                         k6 script
 observability/                     Prometheus config, Grafana dashboard

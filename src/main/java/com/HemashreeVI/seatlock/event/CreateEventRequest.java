@@ -12,8 +12,15 @@ public record CreateEventRequest(
         @NotBlank @Size(max = 200) String venue,
         @NotNull @Future Instant startsAt,
         @NotEmpty @Size(max = 20) @Valid List<SectionRequest> sections,
-        Boolean queueEnabled
+        Boolean queueEnabled,
+        EventCategory category
 ) {
+    /** Without a category (kept for existing callers). */
+    public CreateEventRequest(String name, String venue, Instant startsAt, List<SectionRequest> sections,
+                              Boolean queueEnabled) {
+        this(name, venue, startsAt, sections, queueEnabled, null);
+    }
+
     public record SectionRequest(
             @NotBlank @Size(max = 50) String name,
             @Min(1) @Max(26) int rows,
