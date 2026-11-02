@@ -73,6 +73,9 @@ class AuthTest extends IntegrationTest {
         assertThat(mine.valueStream().map(b -> b.get("id").asLong()).toList()).containsExactly(bookingId);
 
         assertThat(status("/api/bookings/" + bookingId, otherToken)).isEqualTo(404);   // not yours
+        // even the test-only X-User-Id switch can't impersonate a real account
+        String accountId = held.getBody().get("userId").asString();
+        assertThat(get("/api/bookings/" + bookingId, accountId).getStatusCode().value()).isEqualTo(401);
         assertThat(status("/api/bookings/" + bookingId, null)).isEqualTo(401);         // not logged in
         assertThat(status("/api/bookings/" + bookingId, token + "x")).isEqualTo(401);  // tampered token
     }
