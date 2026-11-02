@@ -41,13 +41,26 @@ class RateLimitTest extends IntegrationTest {
     @Test
     void floodingTheBookingEndpointGets429() {
         long eventId = createEvent("PIT", 1, 1, 100);
-        int tooMany = flood("/api/bookings", eventId, "spammer");
-        assertThat(tooMany).isGreaterThan(10);
+        // Flood until the first 429. The bucket holds 50 and refills 5 per second (IntegrationTest),
+        // so however slow the machine is, the 429 must come within 50 + 5/s * elapsed requests.
+        long started = System.nanoTime();
+        int allowed = 0;
+        ResponseEntity<JsonNode> throttled = null;
+        for (int i = 0; i < 1000 && throttled == null; i++) {
+            // invalid body on purpose: the limiter runs before the controller, so it still counts
+            ResponseEntity<JsonNode> res = post("/api/bookings", Map.of("eventId", eventId), "spammer", Map.of());
+            if (res.getStatusCode().value() == 429) {
+                throttled = res;
+            } else {
+                allowed++;
+            }
+        }
+        double elapsedSeconds = (System.nanoTime() - started) / 1e9;
 
-        ResponseEntity<JsonNode> last = post("/api/bookings", Map.of("eventId", eventId), "spammer", Map.of());
-        assertThat(last.getStatusCode().value()).isEqualTo(429);
-        assertThat(last.getHeaders().getFirst("Retry-After")).isNotBlank();
-        assertThat(last.getBody().get("title").asString()).isEqualTo("Too many requests");
+        assertThat(throttled).as("flooding must eventually be throttled").isNotNull();
+        assertThat(allowed).isLessThanOrEqualTo((int) Math.ceil(50 + 5 * elapsedSeconds) + 1);
+        assertThat(throttled.getHeaders().getFirst("Retry-After")).isNotBlank();
+        assertThat(throttled.getBody().get("title").asString()).isEqualTo("Too many requests");
 
         // other users are unaffected
         assertThat(post("/api/bookings", Map.of("eventId", eventId), "innocent", Map.of()).getStatusCode().value())
@@ -83,16 +96,5 @@ class RateLimitTest extends IntegrationTest {
             }
         }
         assertThat(tooMany).isEqualTo(20);
-    }
-
-    private int flood(String path, long eventId, String user) {
-        int tooMany = 0;
-        for (int i = 0; i < 80; i++) {
-            // invalid body on purpose: the limiter runs before the controller, so it still counts
-            if (post(path, Map.of("eventId", eventId), user, Map.of()).getStatusCode().value() == 429) {
-                tooMany++;
-            }
-        }
-        return tooMany;
     }
 }
