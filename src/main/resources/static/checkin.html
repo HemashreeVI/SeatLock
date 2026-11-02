@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SeatLock Check-in</title>
+<meta name="description" content="Organizer check-in scanner for SeatLock tickets.">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #17191c; --muted: #5d6470; --border: #dfe2e7;
+    --accent: #3451d1; --accent-text: #ffffff;
+    --ok: #1f9d55; --ok-bg: #e7f6ee; --warn: #b7791f; --warn-bg: #fdf3e1; --bad: #c53030; --bad-bg: #fde8e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111316; --panel: #1a1d21; --text: #e8eaed; --muted: #9aa1ab; --border: #2c3036;
+      --accent: #7b93ff; --accent-text: #0b0d10;
+      --ok: #48bb78; --ok-bg: #173225; --warn: #ecc94b; --warn-bg: #3a3116; --bad: #fc8181; --bad-bg: #3d1d1d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 16px; }
+  .panel[hidden] { display: none; }
+  input, button { font: inherit; border-radius: 8px; border: 1px solid var(--border); padding: 9px 12px; color: var(--text); background: var(--bg); }
+  input { width: 100%; }
+  button { background: var(--panel); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  form { display: grid; gap: 8px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  video { width: 100%; border-radius: 10px; background: #000; aspect-ratio: 4 / 3; object-fit: cover; }
+  .result { border-radius: 12px; padding: 18px; margin-top: 16px; text-align: center; }
+  .result[hidden] { display: none; }
+  .result .big { font-size: 28px; font-weight: 800; }
+  .result.ADMITTED { background: var(--ok-bg); color: var(--ok); }
+  .result.ALREADY_USED { background: var(--warn-bg); color: var(--warn); }
+  .result.INVALID, .result.ERROR { background: var(--bad-bg); color: var(--bad); }
+  .result .detail { color: var(--text); margin-top: 6px; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { padding: 6px 0; border-top: 1px solid var(--border); font-size: 13px; }
+  li:first-child { border-top: 0; }
+  .error { color: var(--bad); font-size: 14px; min-height: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎟️ Check-in scanner</h1>
+  <p class="muted">For organizers at the entrance. Each ticket gets in exactly once. <a href="/">Back to the seat map</a></p>
+
+  <section class="panel" id="login-panel" hidden>
+    <h2 style="font-size: 16px; margin: 0 0 10px;">Organizer log-in</h2>
+    <form id="login">
+      <input id="email" type="email" autocomplete="username" placeholder="Organizer email" aria-label="Organizer email" required>
+      <input id="password" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required>
+      <button class="primary" type="submit">Log in</button>
+      <div class="error" id="login-error" role="alert"></div>
+    </form>
+  </section>
+
+  <section class="panel" id="scanner" hidden>
+    <div class="row" style="justify-content: space-between;">
+      <span id="who" class="muted"></span>
+      <button id="logout">Log out</button>
+    </div>
+
+    <div id="live-scan" hidden style="margin-top: 12px;">
+      <video id="video" playsinline muted></video>
+      <div class="row" style="margin-top: 8px;">
+        <button class="primary" id="camera">Start camera</button>
+        <span class="muted" id="camera-status"></span>
+      </div>
+    </div>
+
+    <div style="margin-top: 12px;">
+      <label class="muted" for="photo" id="photo-label">Take a photo of the ticket's QR code:</label>
+      <input id="photo" type="file" accept="image/*" capture="environment" style="margin-top: 6px;">
+    </div>
+
+    <form id="manual" style="margin-top: 12px;">
+      <label class="muted" for="code">…or type the code printed under the QR code:</label>
+      <div class="row"><input id="code" autocomplete="off" autocapitalize="characters" placeholder="e.g. 3F9A 0C1B …" style="flex: 1;"><button type="submit">Check</button></div>
+    </form>
+
+    <div class="result" id="result" role="status" aria-live="assertive" hidden>
+      <div class="big" id="result-big"></div>
+      <div id="result-msg"></div>
+      <div class="detail" id="result-detail"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="history-panel" hidden>
+    <h2 style="font-size: 16px; margin: 0 0 8px;">Recent scans</h2>
+    <ul id="history"></ul>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
+    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ } },
+  };
+  let auth = store.get('seatlock.auth', null);   // shared with the main page
+  if (auth && new Date(auth.expiresAt) < new Date()) auth = null;
+
+  const isAdmin = () => auth && (auth.user.roles || []).includes('ADMIN');
+
+  function show() {
+    $('login-panel').hidden = isAdmin();
+    $('scanner').hidden = !isAdmin();
+    $('history-panel').hidden = !isAdmin();
+    if (auth && !isAdmin()) {
+      $('login-error').textContent = `${auth.user.name} is not an organizer. Log in with the organizer account.`;
+    }
+    if (isAdmin()) $('who').textContent = `Scanning as ${auth.user.name}`;
+  }
+
+  $('login').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: $('email').value.trim(), password: $('password').value }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) { $('login-error').textContent = (data && data.detail) || 'Login failed'; return; }
+    auth = { token: data.token, expiresAt: data.expiresAt, user: data.user };
+    store.set('seatlock.auth', auth);
+    $('password').value = '';
+    $('login-error').textContent = '';
+    show();
+  });
+  $('logout').addEventListener('click', () => { stopCamera(); auth = null; store.set('seatlock.auth', null); show(); });
+
+  // ---------- result screen
+  let busy = false;
+  function showResult(r) {
+    const box = $('result');
+    box.hidden = false;
+    box.className = 'result ' + r.result;
+    $('result-big').textContent = { ADMITTED: '✅ ADMIT', ALREADY_USED: '⚠️ ALREADY USED', INVALID: '❌ INVALID', ERROR: '❌ ERROR' }[r.result];
+    $('result-msg').textContent = r.message || '';
+    const t = r.ticket;
+    $('result-detail').textContent = t
+      ? `${t.seat} · ${t.eventName}${t.holderName ? ' · ' + t.holderName : ''}` +
+        (r.result === 'ALREADY_USED' && r.checkedInAt ? ` · first scanned ${new Date(r.checkedInAt).toLocaleTimeString()}` : '')
+      : '';
+    if (navigator.vibrate) navigator.vibrate(r.result === 'ADMITTED' ? 120 : [80, 60, 80]);
+    const li = document.createElement('li');
+    li.textContent = `${new Date().toLocaleTimeString()} · ${$('result-big').textContent} · ${t ? t.seat : (r.message || '')}`;
+    $('history').prepend(li);
+    while ($('history').children.length > 20) $('history').lastChild.remove();
+  }
+
+  async function send(path, init) {
+    busy = true;
+    try {
+      const res = await fetch(path, { ...init, headers: { ...(init.headers || {}), Authorization: 'Bearer ' + auth.token } });
+      const data = await res.json().catch(() => null);
+      if (res.status === 401 || res.status === 403) {
+        auth = null; store.set('seatlock.auth', null); show();
+        $('login-error').textContent = 'Please log in again with the organizer account.';
+        return;
+      }
+      showResult(res.ok ? data : { result: 'ERROR', message: (data && data.detail) || 'HTTP ' + res.status });
+    } catch {
+      showResult({ result: 'ERROR', message: 'No connection to the server' });
+    } finally {
+      busy = false;
+    }
+  }
+
+  const checkCode = (code) => send('/api/tickets/check-in', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }),
+  });
+
+  $('manual').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const code = $('code').value.trim();
+    if (code) { checkCode(code); $('code').value = ''; }
+  });
+
+  // ---------- photo (works on every phone): the server reads the QR code
+  $('photo').addEventListener('change', async () => {
+    const file = $('photo').files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('image', file);
+    await send('/api/tickets/check-in/scan', { method: 'POST', body: form });
+    $('photo').value = '';
+  });
+
+  // ---------- live camera (browsers with the built-in BarcodeDetector)
+  let stream = null;
+  let timer = null;
+  let lastCode = null;
+  let lastAt = 0;
+
+  async function startCamera() {
+    try {
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      $('video').srcObject = stream;
+      await $('video').play();
+      $('camera').textContent = 'Stop camera';
+      $('camera-status').textContent = 'Point the camera at a ticket';
+      timer = setInterval(async () => {
+        if (busy || $('video').readyState < 2) return;
+        try {
+          const codes = await detector.detect($('video'));
+          const value = codes.length ? codes[0].rawValue : null;
+          // ignore the same code for 4 s so one ticket held in front of the camera is checked once
+          if (value && (value !== lastCode || Date.now() - lastAt > 4000)) {
+            lastCode = value; lastAt = Date.now();
+            await checkCode(value);
+          }
+        } catch { /* frame not ready */ }
+      }, 300);
+    } catch (e) {
+      $('camera-status').textContent = 'Camera not available here: use the photo option below.';
+      stopCamera();
+    }
+  }
+
+  function stopCamera() {
+    clearInterval(timer);
+    timer = null;
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+    $('camera').textContent = 'Start camera';
+  }
+
+  if ('BarcodeDetector' in window && navigator.mediaDevices) {
+    BarcodeDetector.getSupportedFormats().then((formats) => {
+      if (formats.includes('qr_code')) {
+        $('live-scan').hidden = false;
+        $('photo-label').textContent = 'No camera access? Take a photo of the QR code instead:';
+      }
+    }).catch(() => {});
+  }
+  $('camera').addEventListener('click', () => (stream ? stopCamera() : startCamera()));
+
+  show();
+})();
+</script>
+</body>
+</html>

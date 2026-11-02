@@ -8,9 +8,13 @@
 // by two bookings at the same time. That audit includes expired and cancelled bookings, so it
 // stays valid for runs longer than the 10-minute hold TTL.
 //
-// Every VU is one user (X-User-Id = k6-<vu>), and all traffic comes from one IP. With the default
-// rate limits most requests would therefore get 429. To measure the booking path itself, start
-// the app with rate limiting off:  -Dseatlock.rate-limit.enabled=false  (see README).
+// Logins: the organizer account (ADMIN_EMAIL / ADMIN_PASSWORD, the same values the app was started
+// with) creates the event; every VU is one buyer with its own guest login token.
+//   k6 run -e ADMIN_EMAIL=me@example.com -e ADMIN_PASSWORD=change-me-123 load-test/booking-rush.js
+//
+// All traffic comes from one IP, so with the default rate limits most requests would get 429. To
+// measure the booking path itself, start the app with rate limiting off:
+//   -Dseatlock.rate-limit.enabled=false
 // Throttled requests are still counted (holds_throttled_429) so you can see the limiter working.
 import http from 'k6/http';
 import { check } from 'k6';
@@ -62,10 +66,16 @@ export function sections(total) {
 }
 
 export function setup() {
+  const login = http.post(`${BASE_URL}/api/auth/login`,
+    JSON.stringify({ email: __ENV.ADMIN_EMAIL, password: __ENV.ADMIN_PASSWORD }),
+    { headers: { 'Content-Type': 'application/json' } });
+  if (login.status !== 200) {
+    throw new Error(`Organizer login failed (${login.status}): pass -e ADMIN_EMAIL=... -e ADMIN_PASSWORD=...`);
+  }
   const startsAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
   const res = http.post(`${BASE_URL}/api/events`, JSON.stringify({
     name: 'Load test sale', venue: 'k6 Arena', startsAt, sections: sections(SEATS),
-  }), { headers: { 'Content-Type': 'application/json' } });
+  }), { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.json('token')}` } });
   if (res.status !== 201) {
     throw new Error(`Could not create the event: ${res.status} ${res.body}`);
   }
@@ -77,15 +87,21 @@ export function setup() {
   return { eventId, seatIds };
 }
 
+let token = null;   // one guest login per VU (module state is per VU in k6)
+
 export default function (data) {
-  const user = `k6-${__VU}`;
+  if (!token) {
+    const guest = http.post(`${BASE_URL}/api/auth/guest`, null, { tags: { name: 'login' } });
+    if (guest.status !== 200) { throttled.add(guest.status === 429 ? 1 : 0); return; }
+    token = guest.json('token');
+  }
   // everyone wants the best seats: pick 1-2 seats biased towards the front rows
   const pick = () => data.seatIds[Math.floor(Math.pow(Math.random(), 2) * data.seatIds.length)];
   const wanted = [...new Set([pick(), pick()].slice(0, 1 + Math.floor(Math.random() * 2)))];
 
   const res = http.post(`${BASE_URL}/api/bookings`,
     JSON.stringify({ eventId: data.eventId, seatIds: wanted }),
-    { headers: { 'Content-Type': 'application/json', 'X-User-Id': user }, tags: { name: 'hold' } });
+    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, tags: { name: 'hold' } });
 
   check(res, { 'hold answered 201/409/429': (r) => [201, 409, 429].includes(r.status) });
   holdsWon.add(res.status === 201 ? 1 : 0);

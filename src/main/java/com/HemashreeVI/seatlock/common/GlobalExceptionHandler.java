@@ -46,6 +46,11 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, "Too many live viewers", ex.getMessage());
     }
 
+    @ExceptionHandler(com.HemashreeVI.seatlock.auth.AuthService.InvalidCredentialsException.class)
+    public ProblemDetail handleBadLogin(RuntimeException ex) {
+        return problem(HttpStatus.UNAUTHORIZED, "Login failed", ex.getMessage());
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail handleConflict(DataIntegrityViolationException ex) {
         return problem(HttpStatus.CONFLICT, "Conflict",

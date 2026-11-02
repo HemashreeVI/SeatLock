@@ -9,6 +9,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.UrlPathHelper;
@@ -19,8 +22,9 @@ import java.util.regex.Pattern;
 
 /**
  * Rate-limits the expensive write endpoints (holding seats, paying, joining the queue).
- * Two buckets must both have a token: one per user (X-User-Id) and one per client IP, because
- * X-User-Id is not authenticated and could otherwise be rotated to dodge the limit.
+ * Two buckets must both have a token: one per logged-in user and one per client IP (a client can
+ * mint guest identities, so the IP bucket caps that). Log-in and sign-up get a much smaller per-IP
+ * bucket against password guessing.
  * Reads are not limited here (they are cheap and cached).
  * If Redis is unavailable we fail OPEN: better to serve users than to block everyone.
  * <p>
@@ -31,7 +35,10 @@ import java.util.regex.Pattern;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Pattern LIMITED_PATHS =
-            Pattern.compile("^/api/bookings(/\\d+/payments)?/?$|^/api/events/\\d+/queue/?$");
+            Pattern.compile("^/api/bookings(/\\d+/payments)?/?$|^/api/events/\\d+/queue/?$|^/api/auth/guest/?$");
+
+    /** Password guessing protection: a much smaller per-IP bucket for log-in and sign-up. */
+    private static final Pattern CREDENTIAL_PATHS = Pattern.compile("^/api/auth/(login|register)/?$");
 
     /** Same normalisation Spring MVC applies before routing: decode, strip ";params", collapse "//". */
     private static final UrlPathHelper PATHS = new UrlPathHelper();
@@ -53,9 +60,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !properties.enabled()
-                || !"POST".equalsIgnoreCase(request.getMethod())
-                || !LIMITED_PATHS.matcher(PATHS.getPathWithinApplication(request)).matches();
+        if (!properties.enabled() || !"POST".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+        String path = PATHS.getPathWithinApplication(request);
+        return !LIMITED_PATHS.matcher(path).matches() && !CREDENTIAL_PATHS.matcher(path).matches();
     }
 
     @Override
@@ -63,11 +72,17 @@ public class RateLimitFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         RateLimiter.Decision decision;
         try {
-            decision = rateLimiter.tryAcquire("ip:" + request.getRemoteAddr(),
-                    properties.ipCapacity(), properties.ipRefillPerSecond());
-            String user = request.getHeader("X-User-Id");
-            if (decision.allowed() && user != null && !user.isBlank()) {
-                decision = rateLimiter.tryAcquire("user:" + user, properties.capacity(), properties.refillPerSecond());
+            String ip = request.getRemoteAddr();
+            if (CREDENTIAL_PATHS.matcher(PATHS.getPathWithinApplication(request)).matches()) {
+                decision = rateLimiter.tryAcquire("login-ip:" + ip, properties.loginCapacity(), properties.loginRefillPerSecond());
+            } else {
+                decision = rateLimiter.tryAcquire("ip:" + ip, properties.ipCapacity(), properties.ipRefillPerSecond());
+                // the caller's identity comes from the verified login token (Spring Security runs before this filter)
+                Authentication caller = SecurityContextHolder.getContext().getAuthentication();
+                if (decision.allowed() && caller != null && caller.isAuthenticated()
+                        && !(caller instanceof AnonymousAuthenticationToken)) {
+                    decision = rateLimiter.tryAcquire("user:" + caller.getName(), properties.capacity(), properties.refillPerSecond());
+                }
             }
         } catch (RuntimeException e) {
             log.warn("Rate limiter unavailable, allowing request: {}", e.getMessage());

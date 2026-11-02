@@ -19,6 +19,7 @@ import com.HemashreeVI.seatlock.seat.Seat;
 import com.HemashreeVI.seatlock.seat.SeatMapService;
 import com.HemashreeVI.seatlock.seat.SeatResponse;
 import com.HemashreeVI.seatlock.seat.SeatsChangedEvent;
+import com.HemashreeVI.seatlock.ticket.TicketService;
 import com.HemashreeVI.seatlock.seat.SeatStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -63,6 +64,7 @@ public class BookingService {
     private final ApplicationEventPublisher events;
     private final BookingMetrics metrics;
     private final SeatMapService seatMapService;
+    private final TicketService ticketService;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingSeatRepository bookingSeatRepository,
@@ -74,7 +76,9 @@ public class BookingService {
                           Outbox outbox,
                           ApplicationEventPublisher events,
                           BookingMetrics metrics,
-                          SeatMapService seatMapService) {
+                          SeatMapService seatMapService,
+                          TicketService ticketService) {
+        this.ticketService = ticketService;
         this.metrics = metrics;
         this.seatMapService = seatMapService;
         this.outbox = outbox;
@@ -262,6 +266,12 @@ public class BookingService {
         });
     }
 
+    public List<BookingResponse> recent(String userId) {
+        return readOnlyTx.execute(status -> bookingRepository.findTop20ByUserIdOrderByCreatedAtDesc(userId).stream()
+                .map(b -> BookingResponse.of(b, seatsOf(b.getId())))
+                .toList());
+    }
+
     public BookingResponse cancel(String userId, Long bookingId) {
         return tx.execute(status -> {
             Booking booking = ownedBooking(userId, bookingRepository.findByIdForUpdate(bookingId), bookingId);
@@ -288,6 +298,7 @@ public class BookingService {
             item.getSeat().book();
         }
         booking.setStatus(BookingStatus.CONFIRMED);
+        ticketService.issueFor(booking, items.stream().map(BookingSeat::getSeat).toList());
         publish(booking, "BookingConfirmed", items);
         log.info("Booking {} confirmed", booking.getId());
     }

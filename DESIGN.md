@@ -162,6 +162,24 @@ Holding row locks while waiting on a slow external provider would stall everythi
 - The delivery result (`SENT`, `FAILED`, `LOGGED` when no provider is configured, `SKIPPED`) is recorded on the notification. A provider outage never undoes the booking or the in-app notification.
 - **Anti-abuse on the public demo:** at most 10 emails per address per 24 h (plus Brevo's own 300/day).
 
+### Accounts and login (Spring Security + JWT)
+- Passwords are stored as **BCrypt** hashes. Log-in answers "wrong email or password" in the same way and in the same time whether the email exists or not (it compares against a dummy hash), so accounts can't be discovered by probing.
+- A successful log-in returns a **JWT signed with HMAC-SHA256** (secret `JWT_SECRET`, valid 7 days). Every request carries it as `Authorization: Bearer …`, and the server verifies the signature without a database lookup. The API is **stateless**: no sessions or cookies, so no CSRF exposure.
+- The token's subject (`user-42`, or `guest-…` for throwaway guest tokens) is the identity used for bookings, payments, tickets and notifications. Ownership checks compare it, and another user's booking or ticket answers **404** (it doesn't reveal that it exists).
+- **Roles:** `USER`, plus `ADMIN` for the organizer account created from `ADMIN_EMAIL` / `ADMIN_PASSWORD` at startup. Creating events and checking tickets in need `ADMIN`.
+- **Rate limits:** log-in and sign-up have their own small per-IP bucket (10, then one every 10 s) against password guessing; other writes use the per-user and per-IP buckets.
+- **Cost:** checking the token signature on every request lowered the k6 booking rush from 2,411 to 1,506 req/s (pessimistic locking, same 4-vCPU machine, p95 631 ms) with still **0 double-bookings**. The README's load-test table was measured before login existed.
+- Tests and load tests simulate thousands of users with `seatlock.auth.trust-user-header=true` (an `X-User-Id` header as identity). It is **off by default** and logged loudly when on.
+
+### E-tickets and check-in
+- Confirming a booking issues **one ticket per seat in the same transaction**. A unique `(booking_id, seat_id)` makes double issuing impossible.
+- **Ticket code:** 128 random bits. It is unguessable, so a ticket can't be forged, and it is looked up server-side on every scan, so a stolen database dump can't mint new ones either. The QR code contains `SEATLOCK-<code>`.
+- **Check-in is a single conditional UPDATE** (`… SET status='USED' WHERE code=? AND status='VALID'`). If two gates scan the same ticket at the same instant, the database lets exactly one update match. Tested with 20 simultaneous scans: 1 admitted, 19 rejected.
+- **Three ways to scan:**
+  - live camera via the browser's `BarcodeDetector` (Chrome/Edge)
+  - a photo uploaded to the server, which reads the QR code with ZXing (works on every phone)
+  - the code typed by hand
+
 ## 9. Rate limiting
 
 - A token bucket per user (`capacity` burst, `refill-per-second` sustained), applied to holds, payments and queue joins.
@@ -210,7 +228,8 @@ For events created with `queueEnabled: true`:
 
 | Limitation | Why it's acceptable now | Next step |
 |---|---|---|
-| No authentication (`X-User-Id`); the per-IP rate limit is the only cap on rotating identities | Focus is concurrency and consistency | Spring Security + JWT, then rate-limit by authenticated user |
+| Guest tokens can be minted freely (rate-limited per IP) | Needed for the 50-buyer race demo | Captcha or disabling guests outside the demo |
+| Tickets can't be transferred, and there's no offline scanning | Not needed for the demo | Re-issue codes on transfer; signed codes that can be verified offline |
 | A provider that charged but stayed unreachable past `give-up-after`, or a late success after cancellation, is only logged | Requires a 15-minute provider outage | Emit `RefundRequired` and automate refunds |
 | Seat map cached as one JSON blob | Fine for venues up to tens of thousands of seats | Per-section keys or a Redis hash per event |
 | Redis lock keys and queue Lua build keys dynamically | Single Redis node | Hash tags (`{eventId}`) for Redis Cluster |

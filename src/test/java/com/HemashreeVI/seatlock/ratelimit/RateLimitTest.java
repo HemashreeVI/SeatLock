@@ -11,6 +11,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,16 +55,22 @@ class RateLimitTest extends IntegrationTest {
     }
 
     @Test
-    void matrixParametersInThePathDoNotBypassTheLimiter() {
+    void matrixParametersInThePathAreRejectedBeforeReachingTheApi() {
         long eventId = createEvent("PIT", 1, 1, 100);
-        // Spring MVC routes "/api/bookings;v=1" to the booking controller, so it must be limited too
-        assertThat(flood("/api/bookings;v=1", eventId, "sneaky")).isGreaterThan(10);
+        List<Long> seat = seatIds(eventId);
+        // "/api/bookings;v=1" could once dodge the limiter's path check. Spring Security's firewall
+        // now refuses such URLs outright, so the request never reaches the limiter or the booking API.
+        for (String path : List.of("/api/bookings;v=1", "/api/bookings%3Bv=1")) {
+            assertThat(post(path, Map.of("eventId", eventId, "seatIds", seat), "sneaky", Map.of())
+                    .getStatusCode().value()).as(path).isEqualTo(400);
+        }
+        assertThat(get("/api/events/" + eventId + "/seats?status=AVAILABLE", null).getBody().size()).isEqualTo(1);
     }
 
     @Test
-    void rotatingUserIdsIsCappedByThePerIpBucket() throws Exception {
+    void rotatingIdentitiesIsCappedByThePerIpBucket() throws Exception {
         RateLimitFilter filter = new RateLimitFilter(rateLimiter,
-                new RateLimitProperties(true, 1000, 1000, 10, 0.001), json);
+                new RateLimitProperties(true, 1000, 1000, 10, 0.001, 10, 0.001), json);
         int tooMany = 0;
         for (int i = 0; i < 30; i++) {
             MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/bookings");
