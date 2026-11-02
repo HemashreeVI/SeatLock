@@ -14,6 +14,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     Optional<Booking> findByUserIdAndIdempotencyKey(String userId, String idempotencyKey);
 
+    List<Booking> findTop20ByUserIdOrderByCreatedAtDesc(String userId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select b from Booking b where b.id = :id")
     Optional<Booking> findByIdForUpdate(@Param("id") Long id);

@@ -23,6 +23,10 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  servlet:
+    multipart:
+      max-file-size: 12MB             # phone photos of tickets at the check-in scanner
+      max-request-size: 12MB
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     template:
@@ -60,6 +64,12 @@ management:
       probability: 1.0                # trace every request (lower this in production)
 
 seatlock:
+  auth:
+    jwt-secret: ${JWT_SECRET:}        # signs login tokens; set it or everyone is logged out on restart
+    token-ttl: 7d
+    admin-email: ${ADMIN_EMAIL:}      # organizer account (create events, check tickets in)
+    admin-password: ${ADMIN_PASSWORD:}
+    trust-user-header: false          # NEVER true in production (tests/benchmarks only)
   messaging:
     mode: kafka                       # kafka | local (in-process, no broker: see application-demo.yml)
   booking:
@@ -100,6 +110,8 @@ seatlock:
     refill-per-second: 5              # sustained requests per second per user
     ip-capacity: 200                  # per-client-IP burst (X-User-Id isn't authenticated)
     ip-refill-per-second: 50
+    login-capacity: 10                # log-in / sign-up attempts per IP (password guessing)
+    login-refill-per-second: 0.1
   queue:
     max-active-users: 100             # shoppers allowed in at once per hot event
     admit-batch-size: 50              # admitted per tick

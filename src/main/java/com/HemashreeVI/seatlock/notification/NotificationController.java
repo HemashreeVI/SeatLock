@@ -1,9 +1,8 @@
 package com.HemashreeVI.seatlock.notification;
 
-import com.HemashreeVI.seatlock.booking.BookingController;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
@@ -20,8 +19,8 @@ public class NotificationController {
     }
 
     @GetMapping("/api/notifications")
-    public List<NotificationResponse> mine(@RequestHeader(BookingController.USER_HEADER) String userId) {
-        return repository.findTop50ByUserIdOrderByCreatedAtDesc(userId).stream()
+    public List<NotificationResponse> mine(Authentication caller) {
+        return repository.findTop50ByUserIdOrderByCreatedAtDesc(caller.getName()).stream()
                 .map(n -> new NotificationResponse(n.getId(), n.getBookingId(), n.getType(), n.getMessage(),
                         n.getCreatedAt(), n.getEmailTo(), n.getEmailStatus()))
                 .toList();

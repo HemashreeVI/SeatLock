@@ -30,6 +30,13 @@ services:
         value: "6379"
       - key: REDIS_SSL
         value: "true"
+      # --- Logins ---
+      - key: JWT_SECRET          # signs login tokens; Render generates a random value
+        generateValue: true
+      - key: ADMIN_EMAIL         # organizer account (create events, check-in scanner)
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
       # --- Email via Brevo (optional): leave empty and emails are only logged ---
       - key: BREVO_API_KEY
         sync: false

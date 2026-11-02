@@ -17,6 +17,9 @@ public record RateLimitProperties(
          * users can share one IP (office, mobile carrier NAT).
          */
         @DefaultValue("200") int ipCapacity,
-        @DefaultValue("50") double ipRefillPerSecond
+        @DefaultValue("50") double ipRefillPerSecond,
+        /** Log-in / sign-up attempts per IP: burst, then one every 10 s. */
+        @DefaultValue("10") int loginCapacity,
+        @DefaultValue("0.1") double loginRefillPerSecond
 ) {
 }

@@ -23,10 +23,24 @@ import java.util.Map;
         "seatlock.rate-limit.refill-per-second=5",
         "seatlock.rate-limit.ip-capacity=1000000",   // every test request comes from 127.0.0.1
         "seatlock.rate-limit.ip-refill-per-second=100000",
-        "seatlock.queue.auto-admit=false"      // tests drive admissions explicitly
+        "seatlock.queue.auto-admit=false",     // tests drive admissions explicitly
+        "seatlock.rate-limit.login-capacity=1000",
+        "seatlock.rate-limit.login-refill-per-second=1000",
+        // most tests act as many users at once; signing each up would add nothing, so they
+        // identify with X-User-Id (TEST ONLY). Login itself is covered by AuthTest.
+        "seatlock.auth.trust-user-header=true",
+        "seatlock.auth.jwt-secret=test-secret-for-integration-tests",
+        "seatlock.auth.admin-email=" + IntegrationTest.ADMIN_EMAIL,
+        "seatlock.auth.admin-password=" + IntegrationTest.ADMIN_PASSWORD
 })
 @Import(TestcontainersConfiguration.class)
 public abstract class IntegrationTest {
+
+    public static final String ADMIN_EMAIL = "organizer@seatlock.test";
+    public static final String ADMIN_PASSWORD = "organizer-password-1";
+
+    /** Same signing secret in every test context, so one organizer token works everywhere. */
+    private static volatile String adminToken;
 
     @Autowired
     private Environment environment;
@@ -70,6 +84,23 @@ public abstract class IntegrationTest {
         }
     }
 
+    /** "Authorization: Bearer <organizer token>": needed to create events. */
+    protected Map<String, String> admin() {
+        if (adminToken == null) {
+            ResponseEntity<JsonNode> login = post("/api/auth/login",
+                    Map.of("email", ADMIN_EMAIL, "password", ADMIN_PASSWORD), null, Map.of());
+            if (login.getStatusCode().value() != 200) {
+                throw new IllegalStateException("Organizer login failed: " + login);
+            }
+            adminToken = login.getBody().get("token").asString();
+        }
+        return bearer(adminToken);
+    }
+
+    protected static Map<String, String> bearer(String token) {
+        return Map.of("Authorization", "Bearer " + token);
+    }
+
     /** Creates an event with one section and returns its id. */
     protected long createEvent(String section, int rows, int seatsPerRow, long priceCents) {
         Map<String, Object> body = Map.of(
@@ -78,7 +109,7 @@ public abstract class IntegrationTest {
                 "startsAt", Instant.now().plus(30, ChronoUnit.DAYS).toString(),
                 "sections", List.of(Map.of(
                         "name", section, "rows", rows, "seatsPerRow", seatsPerRow, "priceCents", priceCents)));
-        ResponseEntity<JsonNode> res = post("/api/events", body, null, Map.of());
+        ResponseEntity<JsonNode> res = post("/api/events", body, null, admin());
         if (res.getStatusCode().value() != 201) {
             throw new IllegalStateException("Could not create event: " + res);
         }

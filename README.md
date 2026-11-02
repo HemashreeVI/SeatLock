@@ -22,7 +22,7 @@
 
 ## 🌐 Live demo
 
-Open `/` on a running instance for an interactive demo: a **live** seat map (seats turn amber/red on every open screen within a second, pushed by the server), hold / pay / cancel, **email confirmations**, the live double-booking audit, and a **"50 buyers, 1 seat" race** button.
+Open `/` on a running instance for an interactive demo: **sign up / log in**, a **live** seat map (seats turn amber/red on every open screen within a second, pushed by the server), hold / pay / cancel, **e-tickets with QR codes**, an organizer **check-in scanner** at `/checkin.html`, **email confirmations**, the live double-booking audit, and a **"50 buyers, 1 seat" race** button.
 
 - **Deploy your own free public demo** (Render + Neon + Upstash, no credit card): see [`DEPLOY.md`](./DEPLOY.md).
 - **Run it locally:** start the app (see *Getting Started*) and open http://localhost:8080/.
@@ -91,52 +91,57 @@ All tests start their own Postgres, Redis and Kafka containers (Docker must be r
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/events` | Create an event; seats are generated from `sections` (`queueEnabled: true` for a waiting room) |
+| `POST` | `/api/auth/register` · `/api/auth/login` | Sign up / log in → a JWT (send it as `Authorization: Bearer <token>`) |
+| `POST` | `/api/auth/guest` | Throwaway guest token (no account) |
+| `GET` | `/api/auth/me` | Who the token belongs to |
+| `POST` | `/api/events` | **Organizer only.** Create an event; seats are generated from `sections` (`queueEnabled: true` for a waiting room) |
 | `GET` | `/api/events` · `/api/events/{id}` | List / get events |
 | `GET` | `/api/events/{id}/seats?status=AVAILABLE` | Seat map (cached, `X-Cache: HIT/MISS`) |
 | `GET` | `/api/events/{id}/seats/stream` | Live seat statuses (Server-Sent Events) |
 | `GET` | `/api/events/{id}/stats` | Seats and bookings by status, **double-booked seat count** |
 | `POST` | `/api/events/{id}/queue` · `GET` same | Join the waiting room / poll position and admission token |
-| `POST` | `/api/bookings` | Hold seats; optional `name` and `email` for notification emails (headers: `X-User-Id`, optional `Idempotency-Key`, `X-Queue-Token` for hot events) |
+| `POST` | `/api/bookings` | Hold seats for the logged-in user (optional `Idempotency-Key`; `X-Queue-Token` for hot events). Notifications go to the account's email |
+| `GET` | `/api/bookings` | Your recent bookings |
 | `GET` | `/api/bookings/{id}` | Booking status |
 | `DELETE` | `/api/bookings/{id}` | Cancel a hold, release the seats |
 | `POST` | `/api/bookings/{id}/payments` | Pay (requires `Idempotency-Key`); `202 Accepted` |
 | `GET` | `/api/payments/{id}` | Payment status |
 | `GET` | `/api/notifications` | Your notifications |
+| `GET` | `/api/tickets` | Your e-tickets (one per seat of each paid booking) |
+| `GET` | `/api/tickets/{id}/qr.png` | The ticket's QR code |
+| `POST` | `/api/tickets/check-in` · `/api/tickets/check-in/scan` | **Organizer only.** Check a ticket in by code, or from a photo of its QR code → `ADMITTED` / `ALREADY_USED` / `INVALID` |
 
-Errors use the standard [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem-details JSON: `400` invalid input, `403` waiting-room admission required, `404` not found, `409` seat taken / wrong state, `422` idempotency key reused for a different request, `429` rate limited (with `Retry-After`).
+Everything except browsing events and seats needs a login. Organizer endpoints need the account set by `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+
+Errors use the standard [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem-details JSON: `400` invalid input, `401` not logged in, `403` organizer only / waiting-room admission required, `404` not found, `409` seat taken / wrong state, `422` idempotency key reused for a different request, `429` rate limited (with `Retry-After`).
 
 ### Example (bash)
 
-The example uses [`jq`](https://jqlang.org/) to pick the ids out of each response, so it works even if your database already contains other events.
+The example uses [`jq`](https://jqlang.org/) to pick values out of each response. Start the app with an organizer account, e.g. `ADMIN_EMAIL=me@example.com ADMIN_PASSWORD=change-me-123`.
 
 ```bash
-# create an event with 2 sections and remember its id
-EVENT_ID=$(curl -s -X POST localhost:8080/api/events -H 'Content-Type: application/json' -d '{
+# log in as the organizer and create an event
+ADMIN=$(curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email": "me@example.com", "password": "change-me-123"}' | jq -r .token)
+EVENT_ID=$(curl -s -X POST localhost:8080/api/events -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{
   "name": "Coldplay Live", "venue": "DY Patil Stadium", "startsAt": "2027-01-20T19:00:00Z",
-  "sections": [
-    {"name": "VIP",     "rows": 2, "seatsPerRow": 5,  "priceCents": 500000},
-    {"name": "GENERAL", "rows": 3, "seatsPerRow": 10, "priceCents": 150000}
-  ]}' | jq -r .id)
+  "sections": [{"name": "VIP", "rows": 2, "seatsPerRow": 5, "priceCents": 500000}]}' | jq -r .id)
 ```
 ```bash
-# the ids of the first two seats of that event
+# a fan signs up, holds two seats and pays
+TOKEN=$(curl -s -X POST localhost:8080/api/auth/register -H 'Content-Type: application/json' \
+  -d '{"name": "Alice", "email": "alice@example.com", "password": "alice-pass-1"}' | jq -r .token)
 SEATS=$(curl -s localhost:8080/api/events/$EVENT_ID/seats | jq -c '[.[0].id, .[1].id]')
+BOOKING_ID=$(curl -s -X POST localhost:8080/api/bookings -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: hold-1' -d "{\"eventId\": $EVENT_ID, \"seatIds\": $SEATS}" | jq -r .id)
+curl -s -X POST localhost:8080/api/bookings/$BOOKING_ID/payments -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: pay-1' -d '{"paymentToken": "tok_visa"}'
 ```
 ```bash
-# hold them for 10 minutes and remember the booking id
-BOOKING_ID=$(curl -s -X POST localhost:8080/api/bookings -H 'Content-Type: application/json' \
-  -H 'X-User-Id: alice' -H 'Idempotency-Key: hold-1' \
-  -d "{\"eventId\": $EVENT_ID, \"seatIds\": $SEATS}" | jq -r .id)
-```
-```bash
-# pay ("tok_fail..." simulates a declined card)
-curl -s -X POST localhost:8080/api/bookings/$BOOKING_ID/payments -H 'Content-Type: application/json' \
-  -H 'X-User-Id: alice' -H 'Idempotency-Key: pay-1' -d '{"paymentToken": "tok_visa"}'
-```
-```bash
-# a moment later: CONFIRMED, seats BOOKED
-curl -s localhost:8080/api/bookings/$BOOKING_ID -H 'X-User-Id: alice'
+# a moment later: two tickets; the organizer checks the first one in (a second scan says ALREADY_USED)
+CODE=$(curl -s localhost:8080/api/tickets -H "Authorization: Bearer $TOKEN" | jq -r '.[0].code')
+curl -s -X POST localhost:8080/api/tickets/check-in -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d "{\"code\": \"$CODE\"}" | jq .result
 ```
 
 
@@ -146,6 +151,8 @@ curl -s localhost:8080/api/bookings/$BOOKING_ID -H 'X-User-Id: alice'
 src/main/java/com/HemashreeVI/seatlock/
 ├── event/          events, seat generation, stats
 ├── seat/           seat entity, seat map + Redis cache
+├── auth/           sign-up / log-in, JWT, security rules, organizer account
+├── ticket/         e-tickets, QR codes, check-in
 ├── booking/        holds, cancel, expiry sweeper, saga listener
 │   └── locking/    optimistic / pessimistic / Redis strategies
 ├── payment/        idempotent payment requests, processor, fake gateway
@@ -156,7 +163,8 @@ src/main/java/com/HemashreeVI/seatlock/
 ├── observability/  business metrics
 ├── config/         typed configuration, Kafka, scheduling
 └── common/         errors -> problem-details JSON
-src/main/resources/db/migration/   Flyway V1..V4
+src/main/resources/static/          demo page (index.html), check-in scanner (checkin.html)
+src/main/resources/db/migration/   Flyway V1..V7
 load-test/                         k6 script
 observability/                     Prometheus config, Grafana dashboard
 ```
@@ -170,7 +178,9 @@ observability/                     Prometheus config, Grafana dashboard
 - [x] **Stage 3:** Kafka-based payment & notification flow, outbox pattern, saga
 - [x] **Stage 4:** Caching, rate limiting, virtual waiting queue
 - [x] **Stage 5:** Observability, load testing, design document
-- [ ] Next: Spring Security (JWT), refund flow for late payment results, multi-instance load test
+- [x] Live seat map (Server-Sent Events), email notifications
+- [x] Accounts and login (Spring Security + JWT), e-tickets with QR codes, check-in scanner
+- [ ] Next: refund flow for late payment results, multi-instance load test
 
 
 ## 📄 Design Decisions

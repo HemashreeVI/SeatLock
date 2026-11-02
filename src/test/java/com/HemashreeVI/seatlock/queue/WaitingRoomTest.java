@@ -89,7 +89,7 @@ class WaitingRoomTest extends IntegrationTest {
                 "startsAt", Instant.now().plus(10, ChronoUnit.DAYS).toString(),
                 "queueEnabled", true,
                 "sections", List.of(Map.of("name", "A", "rows", 1, "seatsPerRow", 5, "priceCents", 100)));
-        lastHotEvent = post("/api/events", body, null, Map.of()).getBody().get("id").asLong();
+        lastHotEvent = post("/api/events", body, null, admin()).getBody().get("id").asLong();
         return lastHotEvent;
     }
 

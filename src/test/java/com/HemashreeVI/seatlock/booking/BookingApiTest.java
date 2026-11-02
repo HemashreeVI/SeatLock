@@ -62,9 +62,9 @@ class BookingApiTest extends IntegrationTest {
         long eventId = createEvent("VIP", 1, 3, 100);
         List<Long> seats = seatIds(eventId);
 
-        // no X-User-Id header
+        // not logged in
         assertThat(post("/api/bookings", Map.of("eventId", eventId, "seatIds", seats), null, Map.of())
-                .getStatusCode().value()).isEqualTo(400);
+                .getStatusCode().value()).isEqualTo(401);
         // duplicate seat ids
         assertThat(hold("alice", eventId, List.of(seats.get(0), seats.get(0)), null).getStatusCode().value())
                 .isEqualTo(400);

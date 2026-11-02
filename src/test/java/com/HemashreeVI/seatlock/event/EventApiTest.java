@@ -24,7 +24,7 @@ class EventApiTest extends IntegrationTest {
                         Map.of("name", "VIP", "rows", 2, "seatsPerRow", 5, "priceCents", 500000),
                         Map.of("name", "GENERAL", "rows", 3, "seatsPerRow", 10, "priceCents", 150000)));
 
-        ResponseEntity<JsonNode> created = post("/api/events", body, null, Map.of());
+        ResponseEntity<JsonNode> created = post("/api/events", body, null, admin());
 
         assertThat(created.getStatusCode().value()).isEqualTo(201);
         long id = created.getBody().get("id").asLong();
@@ -49,13 +49,13 @@ class EventApiTest extends IntegrationTest {
         Map<String, Object> pastEvent = Map.of(
                 "name", "Old", "venue", "X", "startsAt", "2020-01-01T00:00:00Z",
                 "sections", List.of(Map.of("name", "A", "rows", 1, "seatsPerRow", 1, "priceCents", 100)));
-        assertThat(post("/api/events", pastEvent, null, Map.of()).getStatusCode().value()).isEqualTo(400);
+        assertThat(post("/api/events", pastEvent, null, admin()).getStatusCode().value()).isEqualTo(400);
 
         Map<String, Object> duplicateSections = Map.of(
                 "name", "Dup", "venue", "X", "startsAt", Instant.now().plus(1, ChronoUnit.DAYS).toString(),
                 "sections", List.of(
                         Map.of("name", "A", "rows", 1, "seatsPerRow", 1, "priceCents", 100),
                         Map.of("name", "A", "rows", 1, "seatsPerRow", 1, "priceCents", 100)));
-        assertThat(post("/api/events", duplicateSections, null, Map.of()).getStatusCode().value()).isEqualTo(400);
+        assertThat(post("/api/events", duplicateSections, null, admin()).getStatusCode().value()).isEqualTo(400);
     }
 }
