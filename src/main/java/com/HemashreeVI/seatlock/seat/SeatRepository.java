@@ -34,6 +34,15 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
     @Query("select count(s) from Seat s where s.status = :status and s.event.startsAt > :after")
     long countByStatusInEventsStartingAfter(@Param("status") SeatStatus status, @Param("after") java.time.Instant after);
 
+    /** One row per event: event id, total seats, available seats, cheapest and dearest seat. */
+    @Query("""
+            select s.event.id, count(s),
+                   sum(case when s.status = com.HemashreeVI.seatlock.seat.SeatStatus.AVAILABLE then 1 else 0 end),
+                   min(s.priceCents), max(s.priceCents)
+            from Seat s group by s.event.id
+            """)
+    List<Object[]> summarizeAll();
+
     @Query("select s.status, count(s) from Seat s where s.event.id = :eventId group by s.status")
     List<Object[]> countByStatus(@Param("eventId") Long eventId);
 }

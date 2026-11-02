@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My bookings · SeatLock</title>
+<meta name="description" content="Your SeatLock bookings and e-tickets.">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+  .top { padding: 28px 0 6px; }
+  .top h1 { font-size: 28px; font-weight: 800; }
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin: 18px 0 22px; overflow-x: auto; }
+  .tabs button { font: inherit; font-weight: 600; font-size: 15px; background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 14px;
+                 color: var(--muted); cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
+  .tabs button[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); }
+  .tabs .count { background: var(--brand-50); color: var(--brand); border-radius: 999px; font-size: 12px; padding: 1px 8px; margin-left: 6px; }
+  .list { display: grid; gap: 20px; }
+  .bk { overflow: hidden; }
+  .bk .head { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 18px; padding: 18px; align-items: center; }
+  .bk .thumb { height: 92px; border-radius: 12px; display: grid; place-items: center; text-align: center; line-height: 1.1; }
+  .bk .thumb b { font-size: 26px; font-weight: 800; display: block; }
+  .bk .thumb span { font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+  .bk h2 { font-size: 18px; font-weight: 800; }
+  .bk .meta { color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; }
+  .bk .meta span { display: inline-flex; gap: 6px; align-items: center; }
+  .bk .side { text-align: right; display: grid; gap: 8px; justify-items: end; }
+  .bk .side b { font-size: 18px; }
+  .bk .tickets { padding: 0 18px 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .bk .pending { margin: 0 18px 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  .empty { text-align: center; padding: 48px 16px; }
+  .empty h2 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+  @media (max-width: 640px) {
+    .bk .head { grid-template-columns: 80px minmax(0, 1fr); }
+    .bk .thumb { height: 72px; }
+    .bk .side { grid-column: 1 / -1; text-align: left; justify-items: start; grid-auto-flow: column; align-items: center; justify-content: space-between; }
+    .bk .tickets { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main class="container">
+  <div class="top">
+    <h1>My bookings</h1>
+    <p class="muted" style="margin:6px 0 0">Your tickets live here. Show the QR code at the entrance.</p>
+  </div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="list" id="list"><div class="skeleton" style="height:180px"></div><div class="skeleton" style="height:180px"></div></div>
+</main>
+<footer id="footer"></footer>
+
+<script src="/assets/app.js"></script>
+<script>
+(() => {
+  const { auth, api, problem, fmt, h, icons, poster, header, footer } = SeatLock;
+  if (!auth.require()) return;
+  header('bookings');
+  footer();
+  const $ = (id) => document.getElementById(id);
+
+  const groups = [
+    ['upcoming', 'Upcoming', (b) => b.status === 'CONFIRMED'],
+    ['pending', 'Awaiting payment', (b) => b.status === 'HELD' || b.status === 'PAYMENT_PENDING'],
+    ['past', 'Cancelled & expired', (b) => b.status === 'CANCELLED' || b.status === 'EXPIRED'],
+  ];
+  let tab = 'upcoming';
+  let bookings = [];
+  let tickets = [];
+  const events = new Map();
+  const qr = new Map();
+
+  const statusBadge = {
+    CONFIRMED: ['badge-ok', 'Confirmed'], HELD: ['badge-warn', 'Awaiting payment'], PAYMENT_PENDING: ['badge-warn', 'Processing payment'],
+    CANCELLED: ['badge-bad', 'Cancelled'], EXPIRED: ['badge-bad', 'Expired'],
+  };
+
+  function renderTabs() {
+    $('tabs').replaceChildren(...groups.map(([key, label, test]) => {
+      const n = bookings.filter(test).length;
+      return h('button', { role: 'tab', 'aria-selected': String(key === tab), onclick: () => { tab = key; render(); } },
+        label, n ? h('span', { class: 'count', text: n }) : null);
+    }));
+  }
+
+  async function qrImage(t) {
+    if (!qr.has(t.id)) {
+      const r = await fetch(`/api/tickets/${t.id}/qr.png`, { headers: { Authorization: 'Bearer ' + auth.get().token } });
+      qr.set(t.id, r.ok ? URL.createObjectURL(await r.blob()) : null);
+    }
+    return qr.get(t.id);
+  }
+
+  function stub(t) {
+    const img = h('img', { alt: `QR code for ${t.seat}` });
+    const dl = h('a', { class: 'small', download: `seatlock-ticket-${t.id}.png` }, 'Download');
+    qrImage(t).then((url) => { if (url) { img.src = url; dl.href = url; } });
+    const used = t.status === 'USED';
+    return h('div', { class: 'stub' + (used ? ' used' : '') },
+      h('div', { class: 'body' },
+        h('div', { class: 'muted small', text: 'Seat' }),
+        h('div', { class: 'seat', text: t.seat }),
+        h('div', { class: 'small', text: used ? `Checked in ${fmt.time(t.checkedInAt)}, ${fmt.date(t.checkedInAt)}` : 'Valid for one entry' }),
+        h('div', { class: 'code', text: t.code.match(/.{1,4}/g).join(' ') })),
+      h('div', { class: 'qr' }, img, dl),
+      used ? h('span', { class: 'stamp', text: 'USED' }) : null);
+  }
+
+  function card(b) {
+    const e = events.get(b.eventId) || { name: 'Event', venue: '', startsAt: b.createdAt, category: 'OTHER' };
+    const thumb = h('div', { class: 'thumb' }, h('div', {}, h('b', { text: fmt.day(e.startsAt) }), h('span', { text: fmt.month(e.startsAt) })));
+    poster(e, thumb);
+    const [cls, label] = statusBadge[b.status] || ['', b.status];
+    const el = h('article', { class: 'card bk' },
+      h('div', { class: 'head' }, thumb,
+        h('div', {},
+          h('h2', {}, h('a', { href: `/event.html?id=${b.eventId}`, style: { color: 'inherit' } }, e.name)),
+          h('div', { class: 'meta' }, h('span', { html: icons.cal }, fmt.when(e.startsAt)), h('span', { html: icons.pin }, e.venue)),
+          h('div', { class: 'meta' }, `${b.seats.map(fmt.seat).join(', ')} · Booking #${b.id}`)),
+        h('div', { class: 'side' }, h('span', { class: 'badge ' + cls, text: label }), h('b', { text: fmt.money(b.totalCents) }))));
+    if (b.status === 'CONFIRMED') {
+      const mine = tickets.filter((t) => t.bookingId === b.id);
+      if (mine.length) el.append(h('div', { class: 'tickets' }, mine.map(stub)));
+    } else if (b.status === 'HELD' && new Date(b.expiresAt) > new Date()) {
+      el.append(h('div', { class: 'pending alert alert-warn' },
+        h('span', {}, `Seats held until ${fmt.time(b.expiresAt)}. Pay before then to keep them.`),
+        h('a', { class: 'btn btn-gold', href: `/checkout.html?booking=${b.id}` }, 'Complete payment')));
+    }
+    return el;
+  }
+
+  function render() {
+    renderTabs();
+    const [, , test] = groups.find(([key]) => key === tab);
+    const list = bookings.filter(test);
+    if (!list.length) {
+      const msg = { upcoming: ['No upcoming bookings yet', 'When you book seats, your tickets show up here.'],
+                    pending: ['Nothing waiting for payment', 'Seats you hold but haven’t paid for appear here.'],
+                    past: ['Nothing here', 'Cancelled and expired bookings appear here.'] }[tab];
+      $('list').replaceChildren(h('div', { class: 'card empty' }, h('h2', { text: msg[0] }), h('p', { class: 'muted', text: msg[1] }),
+        h('a', { class: 'btn btn-primary', href: '/' }, 'Explore events')));
+      return;
+    }
+    $('list').replaceChildren(...list.map(card));
+  }
+
+  (async () => {
+    const [b, t, e] = await Promise.all([api('GET', '/api/bookings'), api('GET', '/api/tickets'), api('GET', '/api/events')]);
+    if (!b.ok) { $('list').replaceChildren(h('div', { class: 'alert alert-bad' }, problem(b))); return; }
+    bookings = b.data;
+    tickets = t.ok ? t.data : [];
+    if (e.ok) e.data.forEach((x) => events.set(x.id, x));
+    if (!bookings.some(groups[0][2]) && bookings.some(groups[1][2])) tab = 'pending';
+    render();
+  })();
+})();
+</script>
+</body>
+</html>

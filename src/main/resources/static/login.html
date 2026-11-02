@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log in · SeatLock</title>
+<meta name="description" content="Log in or create your SeatLock account to book seats for live events.">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+  body { background: var(--surface); }
+  .split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); min-height: 100vh; }
+  .brand { position: relative; overflow: hidden; color: #fff; padding: 40px 48px; display: flex; flex-direction: column;
+           background: radial-gradient(1200px 600px at 10% -10%, #5b3fd1 0%, transparent 60%),
+                       radial-gradient(900px 500px at 110% 110%, #c2357e 0%, transparent 55%), #2a1d6b; }
+  .brand .logo { color: #fff; }
+  .brand .copy { margin: auto 0; max-width: 470px; }
+  .brand h1 { font-size: clamp(32px, 3.6vw, 46px); font-weight: 800; letter-spacing: -.03em; }
+  .brand h1 em { font-style: normal; color: var(--gold); }
+  .brand p { color: rgba(255, 255, 255, .78); font-size: 17px; margin: 16px 0 28px; }
+  .perks { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+  .perks li { display: flex; gap: 12px; align-items: center; font-weight: 500; }
+  .perks .ico { width: 34px; height: 34px; border-radius: 10px; background: rgba(255, 255, 255, .12); display: grid; place-items: center; color: var(--gold); flex: none; }
+  .ticket-art { position: absolute; right: -60px; bottom: 70px; width: 330px; transform: rotate(-12deg); opacity: .95;
+                filter: drop-shadow(0 30px 40px rgba(0, 0, 0, .35)); }
+  .brand .foot { font-size: 13px; color: rgba(255, 255, 255, .6); }
+  .formside { display: grid; place-items: center; padding: 32px 20px; background: var(--bg); }
+  .panel { width: 100%; max-width: 420px; }
+  .panel h2 { font-size: 26px; font-weight: 800; }
+  .panel .sub { color: var(--muted); margin: 6px 0 22px; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; background: #ebe8f5; border-radius: 12px; padding: 4px; margin-bottom: 22px; }
+  .tabs button { font: inherit; font-weight: 600; border: 0; background: none; padding: 10px; border-radius: 9px; color: var(--muted); cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--surface); color: var(--brand); box-shadow: var(--shadow-sm); }
+  form { display: grid; gap: 16px; }
+  .hint { font-size: 12px; color: var(--muted); }
+  .legal { font-size: 12px; color: var(--subtle); text-align: center; margin-top: 18px; }
+  .mobile-logo { display: none; margin-bottom: 24px; }
+  @media (max-width: 900px) {
+    .split { grid-template-columns: 1fr; }
+    .brand { display: none; }
+    .mobile-logo { display: inline-flex; }
+    .formside { align-items: start; padding-top: 40px; }
+  }
+</style>
+</head>
+<body>
+<div class="split">
+  <aside class="brand" aria-hidden="false">
+    <a class="logo" href="/login.html" id="brand-logo"></a>
+    <div class="copy">
+      <h1>Your seat,<br><em>locked in.</em></h1>
+      <p>Book concerts, comedy, sports and theatre in seconds. When thousands of fans want the same seat, exactly one gets it, and you'll know instantly.</p>
+      <ul class="perks">
+        <li><span class="ico" data-icon="clock"></span>Live seat maps that update as you watch</li>
+        <li><span class="ico" data-icon="shield"></span>Guaranteed no double-bookings, ever</li>
+        <li><span class="ico" data-icon="check"></span>Instant e-tickets with QR codes</li>
+      </ul>
+    </div>
+    <svg class="ticket-art" viewBox="0 0 330 150" aria-hidden="true">
+      <defs><linearGradient id="tg" x1="0" x2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f4efff"/></linearGradient></defs>
+      <path d="M14 0h302a14 14 0 0 1 14 14v40a21 21 0 0 0 0 42v40a14 14 0 0 1-14 14H14A14 14 0 0 1 0 136V96a21 21 0 0 0 0-42V14A14 14 0 0 1 14 0z" fill="url(#tg)"/>
+      <path d="M232 14v122" stroke="#d9d3ef" stroke-width="2" stroke-dasharray="6 6"/>
+      <rect x="24" y="26" width="120" height="12" rx="6" fill="#3b2a8c"/><rect x="24" y="48" width="170" height="9" rx="4.5" fill="#cfc7ee"/>
+      <rect x="24" y="66" width="140" height="9" rx="4.5" fill="#cfc7ee"/>
+      <text x="24" y="116" font-family="Inter, sans-serif" font-weight="800" font-size="28" fill="#3b2a8c">VIP A7</text>
+      <rect x="248" y="34" width="66" height="66" rx="8" fill="#3b2a8c"/><rect x="258" y="44" width="18" height="18" fill="#fff"/><rect x="286" y="44" width="18" height="18" fill="#fff"/>
+      <rect x="258" y="72" width="18" height="18" fill="#fff"/><rect x="290" y="76" width="10" height="10" fill="#e8b04b"/>
+    </svg>
+    <div class="foot">Demo platform · no real payments are taken</div>
+  </aside>
+
+  <main class="formside">
+    <div class="panel">
+      <a class="logo mobile-logo" href="/login.html" id="mobile-logo"></a>
+      <h2 id="title">Welcome back</h2>
+      <p class="sub" id="subtitle">Log in to book seats and see your tickets.</p>
+
+      <div class="tabs" role="tablist" aria-label="Log in or sign up">
+        <button type="button" role="tab" id="tab-login" aria-selected="true">Log in</button>
+        <button type="button" role="tab" id="tab-signup" aria-selected="false">Create account</button>
+      </div>
+
+      <div class="alert alert-info" id="notice" hidden></div>
+
+      <form id="form" novalidate>
+        <div class="field" id="name-field" hidden>
+          <label for="name">Full name</label>
+          <input class="input" id="name" autocomplete="name" maxlength="100" placeholder="e.g. Hemashree V I">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input class="input" id="email" type="email" autocomplete="username" maxlength="254" placeholder="you@example.com" required>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="input-wrap">
+            <input class="input" id="password" type="password" autocomplete="current-password" maxlength="72" placeholder="Your password" required style="padding-right: 64px;">
+            <button type="button" class="toggle" id="toggle" aria-label="Show password">Show</button>
+          </div>
+          <span class="hint" id="pw-hint" hidden>At least 8 characters.</span>
+        </div>
+        <div class="alert alert-bad" id="error" role="alert" hidden></div>
+        <button class="btn btn-primary btn-lg btn-block" type="submit" id="submit">Log in</button>
+      </form>
+
+      <p class="legal">Organizers log in here too, with the organizer account.<br>This is a demo platform. Please don't reuse a password you use elsewhere.</p>
+    </div>
+  </main>
+</div>
+
+<script src="/assets/app.js"></script>
+<script>
+(() => {
+  const { auth, api, problem, icons, safeNext } = SeatLock;
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const next = safeNext(params.get('next'));
+
+  if (auth.get()) { location.replace(next); return; }
+
+  $('brand-logo').innerHTML = icons.logo.replace('#3b2a8c"/>', '#ffffff22"/>') + '<span>SeatLock</span>';
+  $('mobile-logo').innerHTML = icons.logo + '<span>SeatLock</span>';
+  document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = icons[el.dataset.icon]; });
+
+  if (params.get('expired')) { $('notice').hidden = false; $('notice').textContent = 'Your session expired. Please log in again.'; }
+  else if (params.get('next')) { $('notice').hidden = false; $('notice').textContent = 'Log in to continue booking.'; }
+
+  let mode = 'login';
+  function setMode(m) {
+    mode = m;
+    const signup = m === 'signup';
+    $('tab-login').setAttribute('aria-selected', String(!signup));
+    $('tab-signup').setAttribute('aria-selected', String(signup));
+    $('name-field').hidden = !signup;
+    $('pw-hint').hidden = !signup;
+    $('password').autocomplete = signup ? 'new-password' : 'current-password';
+    $('password').placeholder = signup ? 'Create a password' : 'Your password';
+    $('title').textContent = signup ? 'Create your account' : 'Welcome back';
+    $('subtitle').textContent = signup ? 'It takes 20 seconds. Then pick your seats.' : 'Log in to book seats and see your tickets.';
+    $('submit').textContent = signup ? 'Create account' : 'Log in';
+    $('error').hidden = true;
+    (signup ? $('name') : $('email')).focus();
+  }
+  $('tab-login').addEventListener('click', () => setMode('login'));
+  $('tab-signup').addEventListener('click', () => setMode('signup'));
+  if (params.get('signup')) setMode('signup');
+
+  $('toggle').addEventListener('click', () => {
+    const show = $('password').type === 'password';
+    $('password').type = show ? 'text' : 'password';
+    $('toggle').textContent = show ? 'Hide' : 'Show';
+    $('toggle').setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  });
+
+  function fail(message, field) {
+    $('error').hidden = false;
+    $('error').textContent = message;
+    if (field) $(field).focus();
+  }
+
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('error').hidden = true;
+    const email = $('email').value.trim();
+    const password = $('password').value;
+    const name = $('name').value.trim();
+    if (mode === 'signup' && !name) return fail('Please enter your name.', 'name');
+    if (!email || !$('email').checkValidity()) return fail('Please enter a valid email address.', 'email');
+    if (mode === 'signup' && password.length < 8) return fail('Choose a password with at least 8 characters.', 'password');
+    if (!password) return fail('Please enter your password.', 'password');
+
+    const btn = $('submit');
+    btn.disabled = true;
+    btn.replaceChildren(Object.assign(document.createElement('span'), { className: 'spinner' }),
+                        document.createTextNode(mode === 'signup' ? ' Creating account…' : ' Logging in…'));
+    const res = await api('POST', mode === 'signup' ? '/api/auth/register' : '/api/auth/login',
+                          mode === 'signup' ? { name, email, password } : { email, password }, { auth: false });
+    btn.disabled = false;
+    btn.textContent = mode === 'signup' ? 'Create account' : 'Log in';
+    if (!res.ok) {
+      if (res.status === 409) return fail('An account with this email already exists. Log in instead.', 'email');
+      if (res.status === 401) return fail('That email and password don’t match. Please try again.', 'password');
+      if (res.status === 429) return fail('Too many attempts. Please wait a minute and try again.');
+      if (res.status === 400) return fail('Please check your details and try again.');
+      return fail(problem(res));
+    }
+    auth.set({ token: res.data.token, expiresAt: res.data.expiresAt, user: res.data.user });
+    location.replace(next);
+  });
+})();
+</script>
+</body>
+</html>

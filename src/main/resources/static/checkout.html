@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkout · SeatLock</title>
+<meta name="description" content="Review your seats and pay.">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+  .top { padding: 26px 0 8px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; }
+  .top h1 { font-size: 26px; font-weight: 800; }
+  .timer { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 12px; background: var(--brand-50); color: var(--brand-700); font-weight: 600; margin: 16px 0 0; }
+  .timer b { font-variant-numeric: tabular-nums; font-size: 18px; }
+  .timer.urgent { background: var(--bad-50); color: var(--bad); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; margin-top: 20px; align-items: start; }
+  .block { padding: 22px; }
+  .block + .block { margin-top: 20px; }
+  .block h2 { font-size: 17px; font-weight: 800; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  .block h2 .n { width: 26px; height: 26px; border-radius: 50%; background: var(--brand-50); color: var(--brand); display: grid; place-items: center; font-size: 13px; }
+  .contact { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .contact .v { font-weight: 600; }
+  .methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  .method { font: inherit; font-weight: 600; font-size: 14px; border: 1.5px solid var(--border); border-radius: 12px; background: var(--surface);
+            padding: 12px 10px; cursor: pointer; color: var(--text); display: grid; gap: 4px; justify-items: center; }
+  .method small { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .method[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-50); color: var(--brand); box-shadow: 0 0 0 3px var(--brand-50); }
+  .testbox { border: 1.5px dashed #e7c98b; background: var(--gold-50); border-radius: 12px; padding: 14px 16px; font-size: 14px; color: #6d4a00; margin-bottom: 16px; }
+  .testbox b { display: block; margin-bottom: 2px; }
+  .order { position: sticky; top: 84px; overflow: hidden; }
+  .order .head { padding: 18px 20px; }
+  .order .head h3 { font-size: 17px; font-weight: 800; }
+  .order .lines { padding: 16px 20px; display: grid; gap: 10px; font-size: 14px; }
+  .order .line { display: flex; justify-content: space-between; gap: 8px; }
+  .order .grand { display: flex; justify-content: space-between; align-items: baseline; padding: 16px 20px; border-top: 1px dashed var(--border); }
+  .order .grand b { font-size: 24px; font-weight: 800; }
+  .seatchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .done { text-align: center; padding: 34px 24px; }
+  .done .ok { width: 72px; height: 72px; border-radius: 50%; background: var(--ok-50); color: var(--ok); display: grid; place-items: center; margin: 0 auto 16px; animation: pop .4s ease-out; }
+  .done .ok svg { width: 34px; height: 34px; }
+  .done .bad { background: var(--bad-50); color: var(--bad); }
+  @keyframes pop { 0% { transform: scale(.6); opacity: 0; } 80% { transform: scale(1.06); } 100% { transform: scale(1); } }
+  .done h2 { font-size: 24px; font-weight: 800; }
+  .tickets { display: grid; gap: 14px; margin-top: 20px; text-align: left; }
+  .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+  @media (max-width: 920px) { .layout { grid-template-columns: minmax(0, 1fr); } .order { position: static; order: -1; } }
+  @media (max-width: 520px) { .contact { grid-template-columns: 1fr; } .methods { grid-template-columns: 1fr 1fr 1fr; } }
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main class="container">
+  <div class="top">
+    <h1 id="heading">Review &amp; pay</h1>
+    <div class="stepper" aria-label="Progress">
+      <span class="step done"><span class="dot" data-icon="check"></span>Seats</span><span class="step-line"></span>
+      <span class="step active" id="s2"><span class="dot">2</span>Review &amp; pay</span><span class="step-line"></span>
+      <span class="step" id="s3"><span class="dot">3</span>E-tickets</span>
+    </div>
+  </div>
+  <div class="timer" id="timer" hidden><span data-icon="clock"></span><span>Your seats are held for</span><b id="left">10:00</b></div>
+
+  <div id="view"><div class="skeleton" style="height:340px;margin-top:20px"></div></div>
+</main>
+<footer id="footer"></footer>
+
+<script src="/assets/app.js"></script>
+<script>
+(() => {
+  const { auth, api, problem, fmt, h, icons, poster, header, footer, toast } = SeatLock;
+  const me = auth.require();
+  if (!me) return;
+  header('bookings');
+  footer();
+  document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = icons[el.dataset.icon]; });
+  const $ = (id) => document.getElementById(id);
+  const bookingId = Number(new URLSearchParams(location.search).get('booking'));
+  if (!bookingId) { location.replace('/bookings.html'); return; }
+
+  let booking = null;
+  let event = null;
+  let ticker = null;
+
+  function startTimer() {
+    clearInterval(ticker);
+    $('timer').hidden = false;
+    const tick = () => {
+      const ms = new Date(booking.expiresAt) - new Date();
+      $('left').textContent = fmt.countdown(ms);
+      $('timer').classList.toggle('urgent', ms < 120000);
+      if (ms <= 0) { clearInterval(ticker); expired(); }
+    };
+    tick();
+    ticker = setInterval(tick, 1000);
+  }
+
+  function stopTimer() { clearInterval(ticker); $('timer').hidden = true; }
+
+  function orderCard() {
+    const head = h('div', { class: 'head' }, h('span', { class: 'badge badge-dark', text: SeatLock.categoryLabel[event.category] || 'Event' }),
+      h('h3', { text: event.name, style: { marginTop: '10px' } }),
+      h('div', { class: 'small', style: { opacity: .9, marginTop: '4px' } }, fmt.when(event.startsAt)),
+      h('div', { class: 'small', style: { opacity: .9 } }, event.venue));
+    poster(event, head);
+    const bySection = new Map();
+    booking.seats.forEach((s) => {
+      const k = s.section + '|' + s.priceCents;
+      bySection.set(k, (bySection.get(k) || []).concat(s));
+    });
+    return h('aside', { class: 'card order', 'aria-label': 'Order summary' }, head,
+      h('div', { class: 'lines' },
+        [...bySection.values()].map((list) => h('div', { class: 'line' },
+          h('span', {}, `${list[0].section} × ${list.length}`), h('span', { text: fmt.money(list[0].priceCents * list.length) }))),
+        h('div', { class: 'seatchips' }, booking.seats.map((s) => h('span', { class: 'badge', text: fmt.seat(s) }))),
+        h('div', { class: 'line muted small' }, h('span', { text: 'Booking fees' }), h('span', { text: '₹0' }))),
+      h('div', { class: 'grand' }, h('span', { class: 'muted', text: 'Total' }), h('b', { text: fmt.money(booking.totalCents) })));
+  }
+
+  function payView() {
+    let method = 'card';
+    const methods = [['card', 'Card', 'Credit / debit'], ['upi', 'UPI', 'Any UPI app'], ['netbanking', 'Net banking', 'All banks']];
+    const methodRow = h('div', { class: 'methods', role: 'group', 'aria-label': 'Payment method' },
+      methods.map(([key, label, sub]) => h('button', { class: 'method', 'aria-pressed': String(key === method), onclick: (e) => {
+        method = key;
+        methodRow.querySelectorAll('.method').forEach((m) => m.setAttribute('aria-pressed', String(m === e.currentTarget)));
+      } }, label, h('small', { text: sub }))));
+    const payBtn = h('button', { class: 'btn btn-gold btn-lg btn-block', onclick: () => pay('tok_visa', payBtn) }, `Pay ${fmt.money(booking.totalCents)}`);
+    const failBtn = h('button', { class: 'btn btn-ghost btn-block', onclick: () => pay('tok_fail_demo', failBtn) }, 'Simulate a declined payment');
+    return h('div', { class: 'layout' },
+      h('div', {},
+        h('section', { class: 'card block' },
+          h('h2', {}, h('span', { class: 'n', text: '1' }), 'Contact details'),
+          h('div', { class: 'contact' },
+            h('div', {}, h('div', { class: 'muted small', text: 'Name' }), h('div', { class: 'v', text: booking.customerName || me.user.name })),
+            h('div', {}, h('div', { class: 'muted small', text: 'Email' }), h('div', { class: 'v', text: booking.customerEmail || me.user.email || '' }))),
+          h('p', { class: 'muted small', style: { margin: '12px 0 0' } }, 'Your e-tickets are saved to your account and sent to this email.')),
+        h('section', { class: 'card block' },
+          h('h2', {}, h('span', { class: 'n', text: '2' }), 'Payment'),
+          methodRow,
+          h('div', { class: 'testbox' }, h('b', { text: 'Test mode: no real money moves' }),
+            'This is a demo checkout, so no card, UPI or bank details are collected. Choose how the payment should end.'),
+          payBtn,
+          h('div', { style: { height: '8px' } }),
+          failBtn,
+          h('div', { class: 'note muted small', style: { display: 'flex', gap: '8px', marginTop: '14px' }, html: icons.shield },
+            'Your seats stay reserved while the payment is processed. If it fails, they are released automatically.'))),
+      orderCard());
+  }
+
+  async function pay(token, btn) {
+    document.querySelectorAll('#view .btn').forEach((b) => { b.disabled = true; });
+    btn.replaceChildren(h('span', { class: 'spinner' }), ' Processing payment…');
+    const res = await api('POST', `/api/bookings/${bookingId}/payments`, { paymentToken: token },
+                          { headers: { 'Idempotency-Key': `pay-${bookingId}-${token}` } });
+    if (!res.ok) {
+      toast(problem(res), 'bad');
+      return refresh();
+    }
+    await waitForResult();
+  }
+
+  async function waitForResult() {
+    stopTimer();
+    $('view').replaceChildren(h('div', { class: 'card done' }, h('span', { class: 'spinner', style: { width: '40px', height: '40px', color: 'var(--brand)', margin: '0 auto 16px', display: 'block' } }),
+      h('h2', { text: 'Confirming your payment…' }), h('p', { class: 'muted', text: 'This usually takes a second. Please don’t close this page.' })));
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 800));
+      const res = await api('GET', `/api/bookings/${bookingId}`);
+      if (res.ok && res.data.status !== 'PAYMENT_PENDING') { booking = res.data; return show(); }
+    }
+    $('view').replaceChildren(h('div', { class: 'card done' }, h('h2', { text: 'Still processing' }),
+      h('p', { class: 'muted', text: 'Your payment is taking longer than usual. Check My bookings in a minute.' }),
+      h('div', { class: 'actions' }, h('a', { class: 'btn btn-primary', href: '/bookings.html' }, 'Go to My bookings'))));
+  }
+
+  async function confirmed() {
+    stopTimer();
+    $('heading').textContent = 'Booking confirmed';
+    $('s2').className = 'step done'; $('s2').querySelector('.dot').innerHTML = icons.check;
+    $('s3').className = 'step active';
+    const tickets = h('div', { class: 'tickets' });
+    $('view').replaceChildren(h('div', { class: 'card done' },
+      h('div', { class: 'ok', html: icons.check }),
+      h('h2', { text: 'You’re going! 🎉' }),
+      h('p', { class: 'muted' }, `Booking #${booking.id} · ${event.name} · ${fmt.when(event.startsAt)}`),
+      tickets,
+      h('div', { class: 'actions' },
+        h('a', { class: 'btn btn-primary', href: '/bookings.html' }, 'View my bookings'),
+        h('a', { class: 'btn btn-secondary', href: '/' }, 'Browse more events'))));
+    const res = await api('GET', '/api/tickets');
+    if (!res.ok) return;
+    for (const t of res.data.filter((x) => x.bookingId === booking.id)) tickets.append(await ticketStub(t));
+  }
+
+  async function ticketStub(t) {
+    const img = h('img', { alt: `QR code for ${t.seat}` });
+    const link = h('a', { class: 'small', download: `seatlock-ticket-${t.id}.png` }, 'Download');
+    const r = await fetch(`/api/tickets/${t.id}/qr.png`, { headers: { Authorization: 'Bearer ' + auth.get().token } });
+    if (r.ok) { const url = URL.createObjectURL(await r.blob()); img.src = url; link.href = url; }
+    return h('div', { class: 'stub' },
+      h('div', { class: 'body' }, h('div', { class: 'muted small', text: t.eventName }), h('div', { class: 'seat', text: t.seat }),
+        h('div', { class: 'small', text: fmt.when(t.startsAt) }), h('div', { class: 'code', text: t.code.match(/.{1,4}/g).join(' ') })),
+      h('div', { class: 'qr' }, img, link));
+  }
+
+  function failed(title, text) {
+    stopTimer();
+    $('heading').textContent = title;
+    $('view').replaceChildren(h('div', { class: 'card done' },
+      h('div', { class: 'ok bad', html: icons.x }),
+      h('h2', { text: title }), h('p', { class: 'muted', text }),
+      h('div', { class: 'actions' },
+        h('a', { class: 'btn btn-primary', href: `/event.html?id=${booking.eventId}` }, 'Choose seats again'),
+        h('a', { class: 'btn btn-secondary', href: '/' }, 'Browse events'))));
+  }
+
+  function expired() {
+    failed('Your hold expired', 'The 10 minutes to pay ran out, so the seats went back on sale. They may still be available.');
+  }
+
+  function show() {
+    switch (booking.status) {
+      case 'HELD':
+        if (new Date(booking.expiresAt) <= new Date()) return expired();
+        $('view').replaceChildren(payView());
+        return startTimer();
+      case 'PAYMENT_PENDING': return waitForResult();
+      case 'CONFIRMED': return confirmed();
+      case 'EXPIRED': return expired();
+      default: return failed('Payment declined', 'Your bank declined the payment, so the booking was cancelled and the seats released. No money was taken.');
+    }
+  }
+
+  async function refresh() {
+    const b = await api('GET', `/api/bookings/${bookingId}`);
+    if (!b.ok) {
+      $('view').replaceChildren(h('div', { class: 'alert alert-bad', style: { marginTop: '20px' } },
+        b.status === 404 ? 'We couldn’t find this booking in your account.' : problem(b)));
+      return;
+    }
+    booking = b.data;
+    if (!event) {
+      const e = await api('GET', `/api/events/${booking.eventId}`);
+      event = e.ok ? e.data : { name: 'Your event', venue: '', startsAt: booking.createdAt, category: 'OTHER' };
+    }
+    show();
+  }
+  refresh();
+})();
+</script>
+</body>
+</html>

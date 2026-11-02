@@ -5,22 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SeatLock Check-in</title>
 <meta name="description" content="Organizer check-in scanner for SeatLock tickets.">
+<link rel="stylesheet" href="/assets/app.css">
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --text: #17191c; --muted: #5d6470; --border: #dfe2e7;
     --accent: #3451d1; --accent-text: #ffffff;
     --ok: #1f9d55; --ok-bg: #e7f6ee; --warn: #b7791f; --warn-bg: #fdf3e1; --bad: #c53030; --bad-bg: #fde8e8;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #111316; --panel: #1a1d21; --text: #e8eaed; --muted: #9aa1ab; --border: #2c3036;
-      --accent: #7b93ff; --accent-text: #0b0d10;
-      --ok: #48bb78; --ok-bg: #173225; --warn: #ecc94b; --warn-bg: #3a3116; --bad: #fc8181; --bad-bg: #3d1d1d;
-    }
-  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
   main { max-width: 560px; margin: 0 auto; padding: 20px 16px 40px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
   a { color: var(--accent); }
@@ -49,9 +42,10 @@
 </style>
 </head>
 <body>
+<header id="topbar"></header>
 <main>
   <h1>🎟️ Check-in scanner</h1>
-  <p class="muted">For organizers at the entrance. Each ticket gets in exactly once. <a href="/">Back to the seat map</a></p>
+  <p class="muted">For organizers at the entrance. Each ticket gets in exactly once.</p>
 
   <section class="panel" id="login-panel" hidden>
     <h2 style="font-size: 16px; margin: 0 0 10px;">Organizer log-in</h2>
@@ -99,7 +93,9 @@
     <ul id="history"></ul>
   </section>
 </main>
+<footer id="footer"></footer>
 
+<script src="/assets/app.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -135,6 +131,7 @@
     $('password').value = '';
     $('login-error').textContent = '';
     show();
+    SeatLock.header('checkin');
   });
   $('logout').addEventListener('click', () => { stopCamera(); auth = null; store.set('seatlock.auth', null); show(); });
 
@@ -247,6 +244,8 @@
   $('camera').addEventListener('click', () => (stream ? stopCamera() : startCamera()));
 
   show();
+  SeatLock.header('checkin');
+  SeatLock.footer();
 })();
 </script>
 </body>

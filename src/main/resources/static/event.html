@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Choose seats · SeatLock</title>
+<meta name="description" content="Pick your seats on a live seat map.">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+  .banner { padding: 28px 0 30px; }
+  .banner .crumbs { font-size: 13px; color: rgba(255, 255, 255, .75); margin-bottom: 12px; }
+  .banner .crumbs a { color: #fff; }
+  .banner h1 { font-size: clamp(24px, 3.2vw, 36px); font-weight: 800; letter-spacing: -.02em; max-width: 760px; }
+  .banner .facts { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 14px; color: rgba(255, 255, 255, .9); font-weight: 500; }
+  .banner .facts span { display: inline-flex; gap: 8px; align-items: center; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; margin-top: 24px; align-items: start; }
+  .mapcard { padding: 22px; }
+  .maphead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .maphead h2 { font-size: 18px; font-weight: 800; }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--subtle); }
+  .live.on { color: var(--ok); } .live.on::before { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-50); }
+  .stage { margin: 0 auto 26px; max-width: 520px; height: 46px; border-radius: 0 0 50% 50% / 0 0 100% 100%;
+           background: linear-gradient(180deg, var(--brand), var(--brand-600)); color: #fff; display: grid; place-items: center;
+           font-weight: 700; letter-spacing: .3em; font-size: 12px; box-shadow: 0 10px 24px rgba(59, 42, 140, .22); }
+  .scroll { overflow-x: auto; padding-bottom: 6px; }
+  .sections { display: grid; gap: 22px; min-width: max-content; margin: 0 auto; width: max-content; }
+  .sec-title { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: .06em; margin-bottom: 8px; }
+  .sec-title b { color: var(--text); letter-spacing: 0; }
+  .row { display: flex; align-items: center; justify-content: center; gap: 5px; margin-bottom: 5px; }
+  .row .lbl { width: 18px; text-align: center; font-size: 11px; font-weight: 700; color: var(--subtle); flex: none; }
+  .seat { width: 28px; height: 26px; border-radius: 7px 7px 4px 4px; border: 1.5px solid var(--seat-free-border); background: var(--seat-free);
+          font: inherit; font-size: 10px; font-weight: 700; color: var(--brand); cursor: pointer; padding: 0; transition: transform .08s, background .15s; }
+  .seat:hover:not(:disabled) { transform: translateY(-2px); background: var(--brand-50); border-color: var(--brand-600); }
+  .seat.HELD { background: var(--seat-held); border-color: #e2b76a; color: transparent; cursor: not-allowed; }
+  .seat.BOOKED { background: var(--seat-booked); border-color: var(--seat-booked); color: transparent; cursor: not-allowed; }
+  .seat.selected { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .seat.flash { animation: flash .6s ease-out; }
+  @keyframes flash { 0% { box-shadow: 0 0 0 0 rgba(194, 54, 47, .6); } 100% { box-shadow: 0 0 0 10px rgba(194, 54, 47, 0); } }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-top: 22px; font-size: 13px; color: var(--muted); }
+  .legend i { display: inline-block; width: 18px; height: 16px; border-radius: 5px 5px 3px 3px; vertical-align: -3px; margin-right: 6px; border: 1.5px solid transparent; }
+  .summary { position: sticky; top: 84px; padding: 20px; }
+  .summary h2 { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+  .picked { display: grid; gap: 8px; margin: 16px 0; }
+  .picked .item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--bg); }
+  .picked .item b { font-size: 14px; }
+  .picked .item button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px; display: grid; }
+  .totalrow { display: flex; justify-content: space-between; align-items: baseline; padding-top: 14px; border-top: 1px dashed var(--border); margin-bottom: 16px; }
+  .totalrow b { font-size: 22px; font-weight: 800; }
+  .note { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .mobilebar { display: none; }
+  @media (max-width: 920px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .summary { display: none; }
+    .mobilebar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--border);
+                 box-shadow: 0 -8px 24px rgba(37, 26, 90, .1); padding: 12px 16px; align-items: center; justify-content: space-between; gap: 12px; }
+    .mobilebar b { font-size: 18px; }
+    body { padding-bottom: 80px; }
+    .mapcard { padding: 16px 12px; }
+    .seat { width: 25px; height: 24px; font-size: 9.5px; }
+    .row { gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main>
+  <section class="banner" id="banner">
+    <div class="container">
+      <div class="crumbs"><a href="/">Events</a> / <span id="crumb">…</span></div>
+      <h1 id="name"><span class="skeleton" style="display:inline-block;width:60%;height:34px;background-color:rgba(255,255,255,.2)"></span></h1>
+      <div class="facts" id="facts"></div>
+    </div>
+  </section>
+
+  <div class="container layout">
+    <section class="card mapcard" aria-labelledby="pick">
+      <div class="maphead">
+        <h2 id="pick">Choose your seats</h2>
+        <span class="live" id="live" title="Seat changes from other buyers appear here instantly">Connecting…</span>
+      </div>
+      <div class="stage" id="stage">STAGE</div>
+      <div class="scroll"><div class="sections" id="sections"><div class="skeleton" style="width:520px;height:260px"></div></div></div>
+      <div class="legend">
+        <span><i style="background:var(--seat-free);border-color:var(--seat-free-border)"></i>Available</span>
+        <span><i style="background:var(--brand)"></i>Your selection</span>
+        <span><i style="background:var(--seat-held)"></i>On hold</span>
+        <span><i style="background:var(--seat-booked)"></i>Sold</span>
+      </div>
+    </section>
+
+    <aside class="card summary" aria-label="Your selection">
+      <h2>Your tickets</h2>
+      <p class="muted small" id="hint">Tap seats on the map. Up to 10 per booking.</p>
+      <div class="picked" id="picked"></div>
+      <div class="totalrow"><span class="muted">Total</span><b id="total">₹0</b></div>
+      <button class="btn btn-primary btn-lg btn-block" id="continue" disabled>Select seats to continue</button>
+      <div class="note"><span data-icon="shield"></span><span>Seats are held for you for 10 minutes while you pay. Nobody else can take them.</span></div>
+    </aside>
+  </div>
+</main>
+<div class="mobilebar"><div><div class="muted small" id="m-count">No seats selected</div><b id="m-total">₹0</b></div>
+  <button class="btn btn-primary" id="m-continue" disabled>Continue</button></div>
+<footer id="footer"></footer>
+
+<script src="/assets/app.js"></script>
+<script>
+(() => {
+  const { auth, api, problem, fmt, h, icons, poster, header, footer, toast } = SeatLock;
+  if (!auth.require()) return;
+  header('events');
+  footer();
+  document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = icons[el.dataset.icon]; });
+  const $ = (id) => document.getElementById(id);
+  const eventId = Number(new URLSearchParams(location.search).get('id'));
+  if (!eventId) { location.replace('/'); return; }
+
+  const MAX = 10;
+  let event = null;
+  let seats = [];
+  const byId = new Map();
+  const selected = new Set();
+
+  async function load() {
+    const [e, s] = await Promise.all([api('GET', `/api/events/${eventId}`), api('GET', `/api/events/${eventId}/seats`)]);
+    if (!e.ok) {
+      $('sections').replaceChildren(h('div', { class: 'alert alert-bad' }, e.status === 404 ? 'This event doesn’t exist any more.' : problem(e)));
+      return;
+    }
+    event = e.data;
+    seats = s.ok ? s.data : [];
+    seats.forEach((x) => byId.set(x.id, x));
+    document.title = `${event.name} · SeatLock`;
+    poster(event, $('banner'));
+    $('crumb').textContent = event.name;
+    $('name').textContent = event.name;
+    $('facts').replaceChildren(
+      h('span', { html: icons.cal }, fmt.when(event.startsAt)),
+      h('span', { html: icons.pin }, event.venue),
+      event.minPriceCents != null ? h('span', {}, `Tickets from ${fmt.money(event.minPriceCents)}`) : null);
+    $('stage').textContent = event.category === 'SPORTS' ? 'PITCH' : 'STAGE';
+    renderMap();
+    connect();
+  }
+
+  function renderMap() {
+    const sections = new Map();
+    for (const s of seats) {
+      if (!sections.has(s.section)) sections.set(s.section, { price: s.priceCents, rows: new Map() });
+      const sec = sections.get(s.section);
+      if (!sec.rows.has(s.rowLabel)) sec.rows.set(s.rowLabel, []);
+      sec.rows.get(s.rowLabel).push(s);
+    }
+    // most expensive sections closest to the stage
+    const ordered = [...sections.entries()].sort((a, b) => b[1].price - a[1].price);
+    $('sections').replaceChildren(...ordered.map(([name, sec]) => h('div', {},
+      h('div', { class: 'sec-title' }, name, h('b', { text: fmt.money(sec.price) })),
+      [...sec.rows.entries()].map(([row, list]) => h('div', { class: 'row' },
+        h('span', { class: 'lbl', text: row }),
+        list.sort((a, b) => a.seatNumber - b.seatNumber).map(seatButton),
+        h('span', { class: 'lbl', text: row }))))));
+    // on narrow screens the map scrolls sideways: start centred on the stage
+    const scroller = document.querySelector('.scroll');
+    scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
+    renderSummary();
+  }
+
+  function seatButton(s) {
+    const b = h('button', { class: 'seat ' + s.status + (selected.has(s.id) ? ' selected' : ''), 'data-id': s.id,
+      disabled: s.status !== 'AVAILABLE', 'aria-pressed': String(selected.has(s.id)),
+      'aria-label': `${s.section} row ${s.rowLabel} seat ${s.seatNumber}, ${fmt.money(s.priceCents)}, ${s.status === 'AVAILABLE' ? 'available' : s.status === 'HELD' ? 'on hold' : 'sold'}`,
+      title: `${fmt.seat(s)} · ${fmt.money(s.priceCents)}`,
+      onclick: () => toggle(s.id) }, s.seatNumber);
+    return b;
+  }
+
+  function toggle(id) {
+    if (selected.has(id)) selected.delete(id);
+    else if (selected.size >= MAX) { toast(`You can book up to ${MAX} seats at a time.`); return; }
+    else selected.add(id);
+    refreshSeat(id);
+    renderSummary();
+  }
+
+  function refreshSeat(id) {
+    const old = document.querySelector(`.seat[data-id="${id}"]`);
+    if (old) old.replaceWith(seatButton(byId.get(id)));
+  }
+
+  function renderSummary() {
+    const list = [...selected].map((id) => byId.get(id)).sort((a, b) => b.priceCents - a.priceCents);
+    const total = list.reduce((sum, s) => sum + s.priceCents, 0);
+    $('picked').replaceChildren(...list.map((s) => h('div', { class: 'item' },
+      h('div', {}, h('b', { text: fmt.seat(s) }), h('div', { class: 'muted small', text: fmt.money(s.priceCents) })),
+      h('button', { 'aria-label': `Remove ${fmt.seat(s)}`, html: icons.x, onclick: () => toggle(s.id) }))));
+    $('total').textContent = fmt.money(total);
+    $('m-total').textContent = fmt.money(total);
+    $('m-count').textContent = list.length ? `${list.length} seat${list.length > 1 ? 's' : ''} selected` : 'No seats selected';
+    const label = list.length ? `Continue · ${fmt.money(total)}` : 'Select seats to continue';
+    $('continue').textContent = label;
+    $('continue').disabled = !list.length;
+    $('m-continue').disabled = !list.length;
+  }
+
+  // live updates: other buyers' holds and purchases appear immediately
+  let stream;
+  function connect() {
+    if (!window.EventSource) return;
+    stream = new EventSource(`/api/events/${eventId}/seats/stream`);
+    stream.addEventListener('open', () => { $('live').textContent = 'Live availability'; $('live').classList.add('on'); });
+    stream.addEventListener('error', () => { $('live').textContent = 'Reconnecting…'; $('live').classList.remove('on'); });
+    stream.addEventListener('seats', (e) => {
+      for (const { id, status } of JSON.parse(e.data)) {
+        const s = byId.get(id);
+        if (!s || s.status === status) continue;
+        s.status = status;
+        if (status !== 'AVAILABLE' && selected.has(id)) {
+          selected.delete(id);
+          toast(`${fmt.seat(s)} was just taken by someone else.`, 'bad');
+          renderSummary();
+        }
+        refreshSeat(id);
+        if (status !== 'AVAILABLE') document.querySelector(`.seat[data-id="${id}"]`)?.classList.add('flash');
+      }
+    });
+  }
+
+  async function proceed() {
+    const btns = [$('continue'), $('m-continue')];
+    btns.forEach((b) => { b.disabled = true; });
+    $('continue').replaceChildren(h('span', { class: 'spinner' }), ' Holding your seats…');
+    const res = await api('POST', '/api/bookings', { eventId, seatIds: [...selected] },
+                          { headers: { 'Idempotency-Key': crypto.randomUUID() } });
+    if (res.ok) {
+      location.href = `/checkout.html?booking=${res.data.id}`;
+      return;
+    }
+    if (res.status === 409 && res.data && res.data.seatIds) {
+      const taken = res.data.seatIds.map((id) => byId.get(id)).filter(Boolean);
+      taken.forEach((s) => { s.status = 'HELD'; selected.delete(s.id); refreshSeat(s.id); });
+      toast(`Sorry, ${taken.map(fmt.seat).join(', ') || 'a seat'} was just taken. Please pick another.`, 'bad');
+    } else if (res.status === 429) {
+      toast('You’re going a bit fast. Please wait a moment and try again.', 'bad');
+    } else {
+      toast(problem(res), 'bad');
+    }
+    renderSummary();
+  }
+  $('continue').addEventListener('click', proceed);
+  $('m-continue').addEventListener('click', proceed);
+
+  load();
+})();
+</script>
+</body>
+</html>
