@@ -25,10 +25,19 @@ class TrustedUserHeaderFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         String user = request.getHeader(HEADER);
-        if (user != null && !user.isBlank() && SecurityContextHolder.getContext().getAuthentication() == null) {
+        if (user != null && !user.isBlank() && !isRealIdentity(user.strip())
+                && SecurityContextHolder.getContext().getAuthentication() == null) {
             SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
                     user.strip(), null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
         }
         chain.doFilter(request, response);
+    }
+
+    /**
+     * "user-…" and "guest-…" belong to real accounts and guest tokens. The header may never claim
+     * them, so even with this test switch on it can't act as (or collide with) a real login.
+     */
+    static boolean isRealIdentity(String user) {
+        return user.startsWith("user-") || user.startsWith("guest-");
     }
 }

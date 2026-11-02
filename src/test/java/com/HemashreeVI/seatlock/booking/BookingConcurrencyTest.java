@@ -40,7 +40,7 @@ class BookingConcurrencyTest extends IntegrationTest {
         long seatId = seatIds(eventId).getFirst();
         SeatLockStrategy strategy = bookingService.strategy(type);
 
-        Race.Outcome outcome = Race.race(USERS, i -> bookingService.hold("user-" + i,
+        Race.Outcome outcome = Race.race(USERS, i -> bookingService.hold("racer-" + i,
                 new HoldRequest(eventId, List.of(seatId)), null, strategy));
 
         assertThat(outcome.unexpected()).as("unexpected errors").isEmpty();
@@ -65,7 +65,7 @@ class BookingConcurrencyTest extends IntegrationTest {
             requests.add(shuffled.subList(0, 1 + random.nextInt(4)));   // 1..4 random seats each
         }
 
-        Race.Outcome outcome = Race.race(USERS, i -> bookingService.hold("user-" + i,
+        Race.Outcome outcome = Race.race(USERS, i -> bookingService.hold("racer-" + i,
                 new HoldRequest(eventId, requests.get(i)), null, strategy));
 
         assertThat(outcome.unexpected()).as("unexpected errors").isEmpty();
