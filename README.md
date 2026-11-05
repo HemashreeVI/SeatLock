@@ -20,6 +20,202 @@
 
 <img src="./assets/readme/title-run.svg" width="100%" alt="05 Run it: Try it yourself.">
 
+## 📸 Screenshots
+
+| Sign up / log in | Browse events |
+|---|---|
+| <img src="./assets/screenshots/00-login.png" alt="SeatLock login page"> | <img src="./assets/screenshots/01-events.png" alt="Upcoming events"> |
+| **Live seat map** (Server-Sent Events) | **Seats picked, ready to hold** |
+| <img src="./assets/screenshots/02-seatmap.png" alt="Live seat map"> | <img src="./assets/screenshots/03-picked.png" alt="Two seats selected"> |
+
+**The concurrency demo: 50 buyers, 1 seat.** Fifty different users fire a hold for the same seat at the same instant. Exactly one wins; the other 49 get `409 Conflict`, and the live audit still shows `0 double-bookings`:
+
+<p align="center"><img src="./assets/screenshots/05-demo-race.png" width="85%" alt="Race result: 1 winner, 49 got 409 Conflict, 510 ms, 0 double-bookings"></p>
+
+---
+
+## 🧠 How it works
+
+> 🎬 **Visual explainer.** These frames are from the SeatLock explainer video; the full walkthrough follows below.
+
+| | |
+|---|---|
+| <img src="./assets/explainer/1-double-booking-race.png" alt="The double-booking race"> | <img src="./assets/explainer/2-locking-strategies.png" alt="Three locking strategies"> |
+| <img src="./assets/explainer/3-deadlocks.png" alt="Deadlocks and id ordering"> | <img src="./assets/explainer/4-version-and-unique-index.png" alt="Version check and partial unique index"> |
+| <img src="./assets/explainer/5-proof-200-threads-k6.png" alt="200-thread race test and k6 results"> | <img src="./assets/explainer/6-kafka-saga-outbox.png" alt="Kafka saga with transactional outbox"> |
+
+### The problem: the double-booking race
+
+Two buyers load seat **A1** and both see it available. Both requests read the row (`AVAILABLE`), both write `BOOKED`. Two tickets, one seat.
+
+```java
+if (seat.isAvailable()) {   // ⟵ another request can slip in between the check…
+    seat.book();            // …and the write
+}
+```
+
+An `if` can't fix it: the check and the write are two separate steps. SeatLock makes the check-and-write atomic, and then backs that up twice.
+
+### Architecture: a modular monolith
+
+```mermaid
+flowchart TB
+    U(["🌐 Browser"])
+    subgraph APP["☕ Spring Boot app · Java 21 · one deployable"]
+        direction LR
+        EV["event · seat"]
+        BK["booking<br/>(holds · locking)"]
+        PAY["payment"]
+        NOTI["notification"]
+        Q["queue · ratelimit"]
+    end
+    PG[("🐘 PostgreSQL<br/>source of truth")]
+    RD[("🧱 Redis<br/>cache · locks · queue · rate limits")]
+    KF[["📨 Kafka<br/>outbox relay → topics"]]
+    U -- "REST + JWT · SSE live seat map" --> APP
+    APP -- "ACID transactions" --> PG
+    APP -- "cache · SET NX · Lua scripts" --> RD
+    APP -- "outbox → relay" --> KF
+    KF -- "payments.requested / completed · booking events" --> APP
+```
+
+**Why not microservices?** Holding seats must update `seats`, `bookings` and `booking_seats` atomically. In one database that's a plain ACID transaction; across services it would need distributed coordination for no benefit. The seams are still clean: booking, payment and notification talk **only through Kafka messages**, so payments could be split out without touching booking code.
+
+### Seat lifecycle: hold → pay → booked
+
+```mermaid
+stateDiagram-v2
+    [*] --> AVAILABLE
+    AVAILABLE --> HELD: hold (10-minute timer)
+    HELD --> BOOKED: payment succeeded
+    HELD --> AVAILABLE: cancelled / expired / payment failed
+    BOOKED --> [*]
+```
+
+- A hold sets `expires_at = now + 10 min`.
+- A sweeper runs every 5 s:
+  `SELECT … WHERE status='HELD' AND expires_at < now() LIMIT 200 FOR UPDATE SKIP LOCKED`.
+  `SKIP LOCKED` lets several instances expire holds in parallel without blocking each other or processing the same booking twice. A booking that is being paid holds its row lock, so the sweeper skips it.
+
+### Defence in depth: three layers, one guarantee
+
+Any single layer would prevent a double-booking. Together they survive bugs in each other.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Buyer A
+    participant B as Buyer B
+    participant S as SeatLock
+    participant PG as PostgreSQL
+    A->>S: POST /api/bookings {seat 42}
+    B->>S: POST /api/bookings {seat 42}
+    Note over S: seat ids sorted → locks taken in id order (no deadlocks)
+    S->>PG: Layer 1 · lock seat 42 (FOR UPDATE / version / Redis SET NX)
+    PG-->>S: A gets it
+    S->>PG: Layer 2 · UPDATE seats … WHERE id=42 AND version=7
+    S->>PG: Layer 3 · INSERT booking_seats (seat 42, active)
+    PG-->>S: commit ✓
+    S-->>A: 201 Created (HELD, 10 min)
+    S->>PG: B: seat 42 is HELD now
+    S-->>B: 409 Conflict
+```
+
+**Layer 1: a configurable locking strategy** (`seatlock.locking.strategy`)
+
+| Strategy | How | What the loser sees | Best when |
+|---|---|---|---|
+| **PESSIMISTIC** (default) | `SELECT … FOR UPDATE`, rows locked **in id order** | waits for the winner to commit, sees `HELD` → `409` | high contention, exact semantics |
+| **OPTIMISTIC** | read freely, `UPDATE … WHERE version = ?` | 0 rows updated → `409` | low contention |
+| **REDIS** | `SET seatlock:seat-lock:{id} token NX PX 5000` | fails instantly → `409`, no DB work | many instances, shield Postgres |
+
+**Deadlocks:** if T1 locks seat 5 then 3 while T2 locks 3 then 5, they wait on each other forever. SeatLock always sorts seat ids (`distinct().sorted()`) before locking, so that cycle can't form.
+
+**Layer 2: `@Version` on every seat.** Every seat write is `… WHERE id = ? AND version = ?`, under every strategy. A Redis lock can expire while its owner is paused (a GC pause, a slow network), letting a second owner in. The version column acts as a **fencing token**: the stale writer's update matches 0 rows.
+
+**Layer 3: the database itself.**
+
+```sql
+CREATE UNIQUE INDEX uq_booking_seats_one_active ON booking_seats (seat_id) WHERE active;
+```
+
+A seat can be in at most one *active* booking, enforced by PostgreSQL even if every line of application code were wrong.
+
+**Fast reject:** after a sell-out nearly every request is doomed, so SeatLock first checks the Redis-cached seat map and rejects seats already shown as taken. It **can only reject**: a seat shown as available still goes through the locked path. This raised pessimistic throughput from **897 to 2,171 req/s**.
+
+### Proving it
+
+- **`BookingConcurrencyTest`** runs once per strategy (`@EnumSource`). It releases **200 threads** at the same instant with a `CountDownLatch` start gate, against real Postgres, Redis and Kafka in Testcontainers. Result: **exactly 1 winner, 199 × `409`**, and zero seats in two bookings. A second test races 200 overlapping multi-seat requests.
+- **k6 load test** (`load-test/booking-rush.js`): 500 virtual users, 100 seats. It **fails the run** if `/api/events/{id}/stats` ever reports a double-booked seat. That audit covers every booking ever made, including expired and cancelled ones.
+- **`/api/events/{id}/stats`** exposes `doubleBookedSeats` live (shown on the demo page).
+
+### Payments: a Kafka saga with a transactional outbox
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as POST /payments
+    participant DB as PostgreSQL
+    participant R as Outbox relay
+    participant K as Kafka
+    participant P as Payment module
+    participant B as Booking module
+    API->>DB: one transaction: booking PAYMENT_PENDING + payment PENDING + outbox(PaymentRequested)
+    R->>DB: read unpublished rows (FOR UPDATE SKIP LOCKED)
+    R->>K: payments.requested
+    K->>P: PaymentRequested
+    P->>P: charge gateway (same Idempotency-Key, no DB tx open)
+    P->>DB: payment SUCCEEDED/FAILED + outbox(PaymentCompleted)
+    R->>K: payments.completed
+    K->>B: PaymentCompleted
+    alt succeeded
+        B->>DB: booking CONFIRMED, seats BOOKED, tickets issued
+    else failed (compensation)
+        B->>DB: booking CANCELLED, seats released
+    end
+```
+
+- **Why an outbox?** "Write to the DB, then publish to Kafka" can lose a message if the app crashes in between. Writing the message into `outbox_events` **in the same transaction** as the state change makes them succeed or fail together. The relay then gives **at-least-once** delivery.
+- **So every consumer is idempotent:**
+  - Payments require an `Idempotency-Key` (unique index, plus a fingerprint that detects a key reused for a different request → `422`).
+  - The gateway gets the same key, so a redelivered message can never charge twice.
+  - Notifications use an **inbox table** (`processed_messages`) to skip duplicates.
+- **Ordering:** messages are keyed by booking id, so all messages for one booking land on one partition, in order.
+- **Poison messages:** after 3 retries, a message is parked on a `-dlt` topic.
+- **Stuck payments:** a reconciler re-drives `PENDING` payments with their original key.
+
+### Surviving the rush
+
+| Feature | How it works |
+|---|---|
+| **Virtual waiting room** | Redis sorted set (`ZADD NX` keeps your place). An admission job runs **one atomic Lua script** each second, so several instances can't over-admit. Booking requires the `X-Queue-Token`. |
+| **Rate limiting** | Token bucket per user **and** per IP, as **one Lua script** (read, refill, take, write atomically, using Redis's own clock). Over the limit: `429` + `Retry-After`. Fails open if Redis is down. |
+| **Seat-map cache** | Redis, evicted **after commit** (`@TransactionalEventListener(AFTER_COMMIT)`), plus a 5 s TTL safety net. Display only: holds always take the locked path. |
+| **Live seat map** | Server-Sent Events. Commits mark an event *dirty*, and a flush every 300 ms sends each change once, so 1,000 holds cost a few queries, not 1,000 × viewers messages. SSE because traffic is one-way (server → browser). |
+| **Accounts** | BCrypt passwords, stateless HMAC-SHA256 JWT (no sessions, so no CSRF), and the same response for wrong email or password (no account probing). |
+| **E-tickets** | One per seat, 128-bit random code. Check-in is a single conditional `UPDATE … WHERE status='VALID'`: 20 simultaneous scans → 1 admitted. |
+
+### Observability
+
+Micrometer → Prometheus → Grafana (`docker compose --profile observability up`):
+
+```
+seatlock_holds_total{result="success",strategy="PESSIMISTIC"}     4.0
+seatlock_holds_total{result="conflict",strategy="PESSIMISTIC"}  129.0
+seatlock_hold_duration_seconds_max{strategy="PESSIMISTIC"}       0.422
+seatlock_outbox_backlog                                           0.0
+```
+
+*(Real output from a local run after four 50-buyer races.)* Logs carry `traceId-spanId`, propagated over HTTP and Kafka headers. The public demo profile does **not** expose `/actuator/prometheus`.
+
+### Trade-offs, honestly
+
+- **Auth costs throughput:** verifying the JWT on every request lowered the k6 rush from **2,411 to 1,506 req/s**, still with **0 double-bookings**. The load-test table above was measured before login existed.
+- **SSE subscribers live in one instance's memory:** scaling out needs Redis pub/sub fan-out.
+- **Refunds aren't automated:** a provider unreachable for 15+ minutes leads to the payment failing and being logged for a refund check.
+- The full list is in [`DESIGN.md` §13](./DESIGN.md#13-known-limitations-and-next-steps).
+
+
 ## 🌐 Live demo
 
 The web app is a complete booking site: **log in / sign up** → **browse events** (search and categories) → **pick seats on a live seat map** → **checkout** with a 10-minute hold timer (test-mode payment) → **e-tickets with QR codes** under *My bookings* → organizer **check-in scanner**. Pages: `/login.html`, `/` (events), `/event.html`, `/checkout.html`, `/bookings.html`, `/checkin.html`, and the engineering showcase at `/demo.html`.
