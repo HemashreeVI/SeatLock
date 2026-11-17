@@ -52,6 +52,8 @@ services:
 
   # ---- docker compose --profile app up -d   (run SeatLock itself in Docker, no Java needed) ----
   app:
+    # "pull" downloads the published image from GitHub Packages; "up --build" builds it from source instead
+    image: ghcr.io/hemashreevi/seatlock:latest
     build: .
     container_name: seatlock-app
     profiles: ["app"]
