@@ -228,6 +228,30 @@ The engineering showcase (`/demo.html`) has: **sign up / log in**, a **live** se
 **Live:** https://seatlock-7ba6.onrender.com (free server: it sleeps when idle, so the first visit can take about 2 minutes to wake it up)
 
 
+## ☁️ Deployed on AWS
+
+SeatLock also runs on **AWS** with the **full stack, including real Kafka**: one **EC2** instance (Ubuntu, `m7i-flex.large`) runs the app, PostgreSQL, Redis and Kafka with the same `docker-compose.yml` used locally. The database is backed up to **S3** every night through an **IAM role**, with no access keys on the server.
+
+```
+Browser ─► EC2 :8080 ─┬─ Spring Boot app
+ (SG: 8080 public,    ├─ PostgreSQL ─── nightly pg_dump ──► S3 (private, 30-day lifecycle)
+  SSH my-IP only)     ├─ Redis              via IAM role (least privilege)
+                      └─ Kafka   (data stores bound to 127.0.0.1, never exposed)
+```
+
+| EC2 instance with IAM role | SeatLock served from EC2 |
+|---|---|
+| <img src="./assets/screenshots/aws/01-ec2-instance.png" alt="EC2 instance running with IAM role attached"> | <img src="./assets/screenshots/aws/03-seatlock-on-ec2.png" alt="SeatLock login page served from EC2"> |
+| **SSH into the Ubuntu server** | **S3 backup lifecycle rule** |
+| <img src="./assets/screenshots/aws/02-ssh-ubuntu.png" alt="SSH session on the EC2 instance"> | <img src="./assets/screenshots/aws/04-s3-lifecycle.png" alt="S3 lifecycle rule deleting backups after 30 days"> |
+
+- **Security:** only port 8080 is public; SSH is limited to one IP with key-pair login; Postgres, Redis and Kafka have no inbound rule and are bound to localhost.
+- **Backups:** `pg_dump | gzip | aws s3 cp` runs from cron, and a restore into a separate database can be used to verify it.
+- **Production path:** ECS Fargate behind an ALB with HTTPS, RDS, ElastiCache and MSK.
+
+Step-by-step guide, IAM policy, backup script and design trade-offs: [`deploy/aws/AWS.md`](./deploy/aws/AWS.md).
+
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -364,6 +388,7 @@ src/main/java/com/HemashreeVI/seatlock/
 src/main/resources/static/          web app: login, events, event (seat map), checkout, bookings, check-in; demo.html; assets/ (shared CSS/JS)
 src/main/resources/db/migration/   Flyway V1..V7
 load-test/                         k6 script
+deploy/aws/                        AWS EC2 + S3 deployment guide, backup script, IAM policy
 observability/                     Prometheus config, Grafana dashboard
 ```
 
@@ -378,6 +403,7 @@ observability/                     Prometheus config, Grafana dashboard
 - [x] **Stage 5:** Observability, load testing, design document
 - [x] Live seat map (Server-Sent Events), email notifications
 - [x] Accounts and login (Spring Security + JWT), e-tickets with QR codes, check-in scanner
+- [x] AWS deployment: EC2 (full stack with Kafka) + nightly S3 backups via IAM role
 - [ ] Next: refund flow for late payment results, multi-instance load test
 
 
