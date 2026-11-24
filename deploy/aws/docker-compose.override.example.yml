@@ -1,0 +1,19 @@
+# Server-only settings for the EC2 deployment. Docker Compose merges a file named
+# docker-compose.override.yml automatically, so copy this file next to docker-compose.yml:
+#
+#   cp deploy/aws/docker-compose.override.example.yml docker-compose.override.yml
+#   sed -i "s|CHANGE-ME|$(openssl rand -base64 48)|" docker-compose.override.yml
+#
+# Never commit the real docker-compose.override.yml: it contains the JWT signing secret.
+services:
+  app:
+    restart: unless-stopped          # come back up after the instance reboots
+    environment:
+      JWT_SECRET: CHANGE-ME          # fixed secret, so logins survive restarts
+      SEATLOCK_DEMO_SEED: "true"     # keep an upcoming event with free seats
+  postgres:
+    restart: unless-stopped
+  redis:
+    restart: unless-stopped
+  kafka:
+    restart: unless-stopped
