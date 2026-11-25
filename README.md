@@ -6,6 +6,33 @@
   <img src="https://img.shields.io/badge/Java_21-E8B04B?style=for-the-badge" alt="Java 21"> <img src="https://img.shields.io/badge/Spring_Boot_4.1-E8B04B?style=for-the-badge" alt="Spring Boot 4.1"> <img src="https://img.shields.io/badge/PostgreSQL_16-E8B04B?style=for-the-badge" alt="PostgreSQL 16"> <img src="https://img.shields.io/badge/Redis_7-E8B04B?style=for-the-badge" alt="Redis 7"> <img src="https://img.shields.io/badge/Kafka_4.1-E8B04B?style=for-the-badge" alt="Kafka 4.1"> <img src="https://img.shields.io/badge/k6-E8B04B?style=for-the-badge" alt="k6">
 </p>
 
+<h3 align="center">▶ Try it in one click</h3>
+
+<p align="center">
+  <a href="https://codespaces.new/HemashreeVI/seatlock?quickstart=1"><img src="https://github.com/codespaces/badge.svg" alt="Open in GitHub Codespaces"></a>
+  &nbsp;
+  <a href="https://seatlock-7ba6.onrender.com"><img src="https://img.shields.io/badge/Live_demo-seatlock.onrender.com-E8B04B?style=for-the-badge" alt="Live demo"></a>
+</p>
+
+<p align="center"><sub><b>Codespaces:</b> the full stack (Postgres, Redis, Kafka and the app) starts by itself in your browser, nothing to install; the app opens on port 8080 in about 2–3 minutes.</sub></p>
+
+<details>
+<summary><b>🐳 Or run it on your laptop with only Docker (no Java, no clone)</b></summary>
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/HemashreeVI/seatlock/main/docker-compose.yml
+```
+```bash
+docker compose --profile app pull
+```
+```bash
+docker compose --profile app up -d --no-build
+```
+
+Then open http://localhost:8080 (try `/demo.html` for the "50 buyers, 1 seat" race). Stop it with `docker compose --profile app down`.
+
+</details>
+
 <img src="./assets/readme/title-features.svg" width="100%" alt="01 Features: What it does.">
 <img src="./assets/readme/features.svg" width="100%" alt="SeatLock features">
 
