@@ -3,10 +3,7 @@
 // The app opens on port 8080 when it is ready (first start takes about 2-3 minutes).
 {
   "name": "SeatLock",
-  "image": "mcr.microsoft.com/devcontainers/java:1-21-bookworm",
-  "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
-  },
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
   "hostRequirements": { "cpus": 4, "memory": "8gb" },
   "postStartCommand": "bash .devcontainer/start.sh",
   "forwardPorts": [8080],
@@ -15,6 +12,6 @@
   },
   "customizations": {
     "codespaces": { "openFiles": ["README.md"] },
-    "vscode": { "extensions": ["vscjava.vscode-java-pack", "vmware.vscode-spring-boot", "ms-azuretools.vscode-docker"] }
+    "vscode": { "extensions": ["ms-azuretools.vscode-docker"] }
   }
 }

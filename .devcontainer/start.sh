@@ -3,6 +3,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Docker comes with the Codespaces image; give its daemon a moment to start.
+if ! command -v docker >/dev/null 2>&1; then
+  echo "❌ Docker isn't available in this container."
+  echo "   Command Palette (Ctrl/Cmd+Shift+P) → 'Codespaces: Rebuild Container', then run: bash .devcontainer/start.sh"
+  exit 1
+fi
+for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
+
 echo "▶ Starting SeatLock (Postgres, Redis, Kafka + app)…"
 # use the published image when it can be pulled, otherwise build from this checkout
 if docker compose --profile app pull --quiet app; then
